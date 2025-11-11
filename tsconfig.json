@@ -14,7 +14,7 @@
 		"paths": {
 			"@/*": ["./src/*"]
 		},
-		"types": ["bun", "vitest/globals"]
+		"types": ["@types/node", "bun", "vitest/globals"]
 	},
 	"include": ["src", "tests"]
 }
