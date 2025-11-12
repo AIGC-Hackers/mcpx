@@ -1,6 +1,6 @@
 {
 	"name": "mcpx",
-	"version": "0.7.0",
+	"version": "0.7.1",
 	"description": "Token-efficient MCP client: TypeScript schemas (not JSON), LLM-friendly syntax, batch calls, TOON output. Perfect for Claude/LLM automations.",
 	"type": "module",
 	"scripts": {
