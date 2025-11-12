@@ -7,7 +7,7 @@ summary: 'Plan for the mcpx package replacing the Sweetistics pnpm MCP helpers.'
 > Inspired in part by Anthropic’s guidance on MCP code execution agents: https://www.anthropic.com/engineering/code-execution-with-mcp
 
 ## Goals
-- Provide a TypeScript runtime + CLI that exposes all MCP servers defined in `~/Projects/sweetistics/config/mcpx.json`.
+- Provide a TypeScript runtime + CLI that exposes all MCP servers defined in `~/Projects/sweetistics/mcp.json` plus the shared `~/.mcpx/mcp.json`.
 - Preserve current one-shot `pnpm mcpx:call` ergonomics while enabling reusable connections for Bun/Node agents.
 - Keep feature parity with the Python helper (env interpolation, stdio wrapping, OAuth caching) and extend test coverage.
 
@@ -31,7 +31,7 @@ summary: 'Plan for the mcpx package replacing the Sweetistics pnpm MCP helpers.'
   - Tool signature + schema fetching for `list`.
 - Provide lazy connection pooling per server to minimize startup cost.
 - Expose a lightweight server proxy (`createServerProxy`) that maps camelCase method accesses to tool names, fills JSON-schema defaults, validates required arguments, and returns a helper (`CallResult`) for extracting text/markdown/JSON without re-parsing the content envelope.
-- Document Cursor-compatible `config/mcpx.json` structure; support env-sourced headers and stdio commands while keeping inline overrides available for scripts.
+- Document Cursor-compatible `mcp.json` structure; support env-sourced headers and stdio commands while keeping inline overrides available for scripts.
 
 ## Schema-Aware Proxy Strategy
 - Cache tool schemas on first access, persist them under `~/.mcpx/<server>/schema.json` for reuse across processes, and tolerate failures by falling back to raw `callTool`.
@@ -53,7 +53,7 @@ summary: 'Plan for the mcpx package replacing the Sweetistics pnpm MCP helpers.'
 - Add integration tests asserting the generated CLI can list tools, execute with positional/flag arguments, and hydrate cache files without additional list calls.
 
 ## Configuration
-- Single file `config/mcpx.json` mirrors Cursor/Claude schema: `mcpServers` map with entries containing `baseUrl` or `command`+`args`, optional `headers`, `env`, `description`, `auth`, `tokenCacheDir`, and convenience `bearerToken`/`bearerTokenEnv` fields.
+- `mcp.json` mirrors Cursor/Claude schema: `mcpServers` map with entries containing `baseUrl` or `command`+`args`, optional `headers`, `env`, `description`, `auth`, `tokenCacheDir`, and convenience `bearerToken`/`bearerTokenEnv` fields.
 - Optional `imports` array (defaulting to ['cursor', 'claude-code', 'claude-desktop', 'codex', 'windsurf', 'vscode']) controls auto-merging of editor configs; entries earlier in the list win conflicts while local definitions can still override.
 - Provide `configPath` override for scripts/tests; keep inline overrides in examples for completeness but default to file-based configuration.
 - Add fixtures validating HTTP vs. stdio normalization, header/env behavior, and editor config imports (Cursor, Claude Code/Desktop, Codex, Windsurf, VS Code) to ensure priority ordering matches defaults.

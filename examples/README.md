@@ -115,7 +115,7 @@ mcpx call 'linear.list_issues({ limit: 5 })'
 Batch calls use the same MCP server configurations:
 
 ```json
-// config/mcpx.json
+// mcp.json (project) or ~/.mcpx/mcp.json (user)
 {
   "mcpServers": {
     "linear": {

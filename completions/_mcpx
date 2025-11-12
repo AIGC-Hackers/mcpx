@@ -9,7 +9,7 @@ _mcpx() {
 
   local -a global_flags
   global_flags=(
-    '--config[Path to mcpx.json]:file:_files'
+    '--config[Path to mcpx.json (override ./mcp.json + ~/.mcpx/mcp.json)]:file:_files'
     '--root[Working directory for stdio servers]:dir:_directories'
     '--log-level[Logging level]:level:(debug info warn error)'
     '--oauth-timeout[OAuth browser timeout in ms]:milliseconds:'

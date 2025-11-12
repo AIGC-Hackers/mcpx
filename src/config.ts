@@ -1,9 +1,9 @@
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
-import { pathsForImport, readExternalEntries } from "@/config-imports.js";
+import { parse } from "valibot";
 import { normalizeServerEntry } from "@/config-normalize.js";
 import {
-  DEFAULT_IMPORTS,
   type LoadConfigOptions,
   type RawConfig,
   RawConfigSchema,
@@ -12,7 +12,7 @@ import {
   type ServerDefinition,
   type ServerSource,
 } from "@/config-schema.js";
-import { expandHome } from "@/env.js";
+import { migrateLegacyConfigs } from "@/config-migration.js";
 
 export { toFileUrl } from "@/config-imports.js";
 export { __configInternals } from "@/config-normalize.js";
@@ -29,47 +29,30 @@ export async function loadServerDefinitions(
   options: LoadConfigOptions = {},
 ): Promise<ServerDefinition[]> {
   const rootDir = options.rootDir ?? process.cwd();
-  const { path: configPath, explicit } = resolveConfigPath(options.configPath, rootDir);
-  const config = await readConfigFile(configPath, explicit);
+  const targets = resolveConfigTargets(options.configPath, rootDir);
+
+  if (!options.configPath && !(await hasExistingConfig(targets))) {
+    await migrateLegacyConfigs({ rootDir });
+  }
 
   const merged = new Map<string, { raw: RawEntry; baseDir: string; source: ServerSource }>();
 
-  const configuredImports = config.imports;
-  const imports = configuredImports
-    ? configuredImports.length === 0
-      ? configuredImports
-      : [
-          ...configuredImports,
-          ...DEFAULT_IMPORTS.filter((kind) => !configuredImports.includes(kind)),
-        ]
-    : DEFAULT_IMPORTS;
-  for (const importKind of imports) {
-    const candidates = pathsForImport(importKind, rootDir);
-    for (const candidate of candidates) {
-      const resolved = expandHome(candidate);
-      const entries = await readExternalEntries(resolved);
-      if (!entries) {
+  for (const target of targets) {
+    const config = await readConfigFile(target.path, target.optional);
+    if (!config) {
+      continue;
+    }
+    for (const [name, entryRaw] of Object.entries(config.mcpServers)) {
+      if (target.skipIfExists && merged.has(name)) {
         continue;
       }
-      for (const [name, rawEntry] of entries) {
-        if (merged.has(name)) {
-          continue;
-        }
-        merged.set(name, {
-          raw: rawEntry,
-          baseDir: path.dirname(resolved),
-          source: { kind: "import", path: resolved },
-        });
-      }
+      const parsedEntry = parse(RawEntrySchema, entryRaw);
+      merged.set(name, {
+        raw: parsedEntry,
+        baseDir: path.dirname(target.path),
+        source: { kind: "local", path: target.path },
+      });
     }
-  }
-
-  for (const [name, entryRaw] of Object.entries(config.mcpServers)) {
-    merged.set(name, {
-      raw: RawEntrySchema.parse(entryRaw),
-      baseDir: rootDir,
-      source: { kind: "local", path: configPath },
-    });
   }
 
   const servers: ServerDefinition[] = [];
@@ -80,28 +63,51 @@ export async function loadServerDefinitions(
   return servers;
 }
 
-function resolveConfigPath(
-  configPath: string | undefined,
-  rootDir: string,
-): { path: string; explicit: boolean } {
-  if (configPath) {
-    return { path: path.resolve(configPath), explicit: true };
-  }
-  return {
-    path: path.resolve(rootDir, "config", "mcpx.json"),
-    explicit: false,
-  };
+interface ConfigTarget {
+  readonly path: string;
+  readonly optional: boolean;
+  readonly skipIfExists: boolean;
 }
 
-async function readConfigFile(configPath: string, explicit: boolean): Promise<RawConfig> {
+function resolveConfigTargets(configPath: string | undefined, rootDir: string): ConfigTarget[] {
+  if (configPath) {
+    return [{ path: path.resolve(configPath), optional: false, skipIfExists: false }];
+  }
+  const projectPath = path.resolve(rootDir, "mcp.json");
+  const homePath = path.join(os.homedir(), ".mcpx", "mcp.json");
+  return [
+    { path: projectPath, optional: true, skipIfExists: false },
+    { path: homePath, optional: true, skipIfExists: true },
+  ];
+}
+
+async function hasExistingConfig(targets: ConfigTarget[]): Promise<boolean> {
+  for (const target of targets) {
+    if (await fileExists(target.path)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function readConfigFile(configPath: string, optional: boolean): Promise<RawConfig | null> {
   try {
     const buffer = await fs.readFile(configPath, "utf8");
-    return RawConfigSchema.parse(JSON.parse(buffer));
+    return parse(RawConfigSchema, JSON.parse(buffer));
   } catch (error) {
-    if (!explicit && isErrno(error, "ENOENT")) {
-      return { mcpServers: {}, imports: [] };
+    if (optional && isErrno(error, "ENOENT")) {
+      return null;
     }
     throw error;
+  }
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
   }
 }
 

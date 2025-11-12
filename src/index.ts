@@ -1,5 +1,7 @@
 export type { CommandSpec, ServerDefinition } from "@/config.js";
 export { loadServerDefinitions } from "@/config.js";
+export type { MigrationOptions, MigrationResult } from "@/config-migration.js";
+export { migrateLegacyConfigs } from "@/config-migration.js";
 export type { CallResult, ConnectionIssue } from "@/result-utils.js";
 export { createCallResult, describeConnectionIssue, wrapCallResult } from "@/result-utils.js";
 export type {

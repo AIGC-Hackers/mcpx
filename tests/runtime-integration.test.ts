@@ -129,7 +129,6 @@ describe("runtime integration", () => {
     const result = (await runtime.callTool("integration", "add", {
       args: { a: 3, b: 4 },
     })) as { structuredContent?: { result: number } };
-
     expect(result.structuredContent?.result).toBe(7);
 
     await runtime.close("integration");

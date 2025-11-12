@@ -20,8 +20,8 @@ bun add mcpx
 
 - Replace `pnpm mcpx:list` with `mcpx list`.
 - Replace `pnpm mcpx:call <server>.<tool> key=value` with `mcpx call '{ tool: "<server>.<tool>", args: { key: "value" } }'`.
-- Add `--config <path>` if your configuration is not under `./config/mcpx.json`.
-- Optional: set `"imports"` inside `mcpx.json` (for example `[]` to disable auto-imports or `["cursor", "codex"]` to customize the order).
+- Add `--config <path>` if you want to override the default `./mcp.json` + `~/.mcpx/mcp.json` merge.
+- Optional: run the built-in migration helper if you still rely on Cursor/Claude/Codex/Windsurf/VS Code configs—first launch copies them into `~/.mcpx/mcp.json` automatically.
 - Append `--tail-log` to stream the last 20 lines of any log file returned by the tool.
 
 ## 3. OAuth Tokens
@@ -35,7 +35,7 @@ bun add mcpx
 ```ts
 import { createRuntime } from "mcpx";
 
-const runtime = await createRuntime({ configPath: "./config/mcpx.json" });
+const runtime = await createRuntime({ configPath: "./mcp.json" });
 const tools = await runtime.listTools("chrome-devtools");
 await runtime.callTool("chrome-devtools", "take_screenshot", { args: { url: "https://x.com" } });
 await runtime.close();

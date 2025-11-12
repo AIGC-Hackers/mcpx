@@ -228,7 +228,7 @@ function formatGlobalFlags(colorize: boolean): string {
   const entries = [
     {
       flag: "--config <path>",
-      summary: "Path to mcpx.json (defaults to ./config/mcpx.json)",
+      summary: "Path to mcpx.json (defaults to ./mcp.json + ~/.mcpx/mcp.json)",
     },
     {
       flag: "--root <path>",
@@ -264,7 +264,7 @@ function formatQuickStart(colorize: boolean): string {
 function formatHelpFooter(colorize: boolean): string {
   const pointer = "Run `mcpx <command> --help` for detailed flags.";
   const autoLoad =
-    "mcpx auto-loads servers from ./config/mcpx.json and editor imports (Cursor, Claude, Codex, etc.).";
+    "Defaults: merge ./mcp.json with ~/.mcpx/mcp.json; first run migrates Cursor/Claude/Codex configs automatically.";
   if (!colorize) {
     return `${pointer}\n${autoLoad}`;
   }

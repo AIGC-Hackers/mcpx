@@ -1,7 +1,7 @@
 # Fish completion for mcpx
 
 # Global flags
-complete -c mcpx -l config -d 'Path to mcpx.json' -r
+complete -c mcpx -l config -d 'Path to mcpx.json (override ./mcp.json + ~/.mcpx/mcp.json)' -r
 complete -c mcpx -l root -d 'Working directory for stdio servers' -r
 complete -c mcpx -l log-level -d 'Logging level' -xa 'debug info warn error'
 complete -c mcpx -l oauth-timeout -d 'OAuth browser timeout in ms' -x

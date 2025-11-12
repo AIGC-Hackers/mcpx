@@ -2,7 +2,10 @@
 
 ## [Unreleased]
 
-_No changes yet._
+### Configuration
+- Default config search now merges `./mcp.json` (project) with `~/.mcpx/mcp.json` (user); project entries win on conflicts, and `--config` still overrides the lookup entirely.
+- Added `migrateLegacyConfigs()` and auto-run migration when neither file exists—legacy `config/mcpx.json` content is copied to `./mcp.json`, and Cursor/Claude/Codex/Windsurf/VS Code configs are imported into `~/.mcpx/mcp.json`.
+- Updated CLI help, completions, README, and docs to call out the new paths and migration behavior.
 
 ## [0.7.0] - 2025-11-10
 

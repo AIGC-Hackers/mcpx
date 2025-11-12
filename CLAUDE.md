@@ -52,7 +52,7 @@ gh run view --log <run-id>              # Inspect CI failures quickly
 - `callOnce()`: Convenience wrapper for single-shot tool calls without managing runtime lifecycle
 
 **Configuration** (`src/config.ts`, `src/config-schema.ts`, `src/config-normalize.ts`)
-- Loads `config/mcpx.json` plus imports from Cursor/Claude/Codex/Windsurf/VS Code
+- Merges `./mcp.json` with `~/.mcpx/mcp.json`; first run migrates Cursor/Claude/Codex/Windsurf/VS Code configs into the user file
 - Supports `${VAR}`, `${VAR:-fallback}`, and `$env:VAR` interpolation
 - Stdio commands inherit working directory from their defining config file
 - `ServerDefinition` schema represents both HTTP (`baseUrl`, `headers`) and stdio (`command`, `args`, `env`) servers

@@ -1,15 +1,26 @@
-import { z } from "zod";
+import {
+  array,
+  object,
+  optional,
+  picklist,
+  record,
+  string,
+  union,
+  type InferOutput,
+} from "valibot";
 
-export const ImportKindSchema = z.enum([
+const IMPORT_KIND_VALUES = [
   "cursor",
   "claude-code",
   "claude-desktop",
   "codex",
   "windsurf",
   "vscode",
-]);
+] as const;
 
-export type ImportKind = z.infer<typeof ImportKindSchema>;
+export const ImportKindSchema = picklist(IMPORT_KIND_VALUES);
+
+export type ImportKind = InferOutput<typeof ImportKindSchema>;
 
 export const DEFAULT_IMPORTS: ImportKind[] = [
   "cursor",
@@ -20,38 +31,42 @@ export const DEFAULT_IMPORTS: ImportKind[] = [
   "vscode",
 ];
 
-export const RawEntrySchema = z.object({
-  description: z.string().optional(),
-  baseUrl: z.string().optional(),
-  base_url: z.string().optional(),
-  url: z.string().optional(),
-  serverUrl: z.string().optional(),
-  server_url: z.string().optional(),
-  command: z.union([z.string(), z.array(z.string())]).optional(),
-  executable: z.string().optional(),
-  args: z.array(z.string()).optional(),
-  headers: z.record(z.string()).optional(),
-  env: z.record(z.string()).optional(),
-  auth: z.string().optional(),
-  tokenCacheDir: z.string().optional(),
-  token_cache_dir: z.string().optional(),
-  clientName: z.string().optional(),
-  client_name: z.string().optional(),
-  oauthRedirectUrl: z.string().optional(),
-  oauth_redirect_url: z.string().optional(),
-  bearerToken: z.string().optional(),
-  bearer_token: z.string().optional(),
-  bearerTokenEnv: z.string().optional(),
-  bearer_token_env: z.string().optional(),
+const optionalString = () => optional(string());
+const stringArray = array(string());
+const optionalStringRecord = optional(record(string(), string()));
+
+export const RawEntrySchema = object({
+  description: optionalString(),
+  baseUrl: optionalString(),
+  base_url: optionalString(),
+  url: optionalString(),
+  serverUrl: optionalString(),
+  server_url: optionalString(),
+  command: optional(union([string(), stringArray])),
+  executable: optionalString(),
+  args: optional(stringArray),
+  headers: optionalStringRecord,
+  env: optionalStringRecord,
+  auth: optionalString(),
+  tokenCacheDir: optionalString(),
+  token_cache_dir: optionalString(),
+  clientName: optionalString(),
+  client_name: optionalString(),
+  oauthRedirectUrl: optionalString(),
+  oauth_redirect_url: optionalString(),
+  bearerToken: optionalString(),
+  bearer_token: optionalString(),
+  bearerTokenEnv: optionalString(),
+  bearer_token_env: optionalString(),
 });
 
-export const RawConfigSchema = z.object({
-  mcpServers: z.record(RawEntrySchema),
-  imports: z.array(ImportKindSchema).optional(),
+export const RawConfigSchema = object({
+  mcpServers: record(string(), RawEntrySchema),
+  imports: optional(array(ImportKindSchema)),
 });
 
-export type RawEntry = z.infer<typeof RawEntrySchema>;
-export type RawConfig = z.infer<typeof RawConfigSchema>;
+export type RawEntry = InferOutput<typeof RawEntrySchema>;
+export type RawConfig = InferOutput<typeof RawConfigSchema>;
 
 export interface HttpCommand {
   readonly kind: "http";

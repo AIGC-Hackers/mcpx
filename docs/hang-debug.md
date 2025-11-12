@@ -38,7 +38,7 @@ tmux new-session -d -s mcphang \
    CHROME_DEVTOOLS_MCP_BROWSER_URL=http://127.0.0.1:9222 \
    pnpm --dir "$HOME/projects/mcpx" exec tsx \
    "$HOME/projects/mcpx/src/cli.ts" call \
-   --config "$PWD/config/mcpx.json" \
+   --config "$PWD/mcp.json" \
    --root "$PWD" \
    chrome-devtools --tool list_pages'
 

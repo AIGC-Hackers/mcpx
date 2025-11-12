@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseTOML } from "confbox";
+import { safeParse } from "valibot";
 import type { ImportKind, RawEntry } from "@/config-schema.js";
 import { RawEntrySchema } from "@/config-schema.js";
 
@@ -153,8 +154,8 @@ function convertExternalEntry(value: Record<string, unknown>): RawEntry | null {
     result.args = value.args;
   }
 
-  const parsed = RawEntrySchema.safeParse(result);
-  return parsed.success ? parsed.data : null;
+  const parsed = safeParse(RawEntrySchema, result);
+  return parsed.success ? parsed.output : null;
 }
 
 function buildExternalHeaders(record: Record<string, unknown>): Record<string, string> | undefined {

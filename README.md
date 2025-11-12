@@ -18,7 +18,7 @@ MCPX helps you lean into the "code execution" workflows highlighted in Anthropic
 
 ## Key Capabilities
 
-- **Zero-config discovery.** `createRuntime()` loads `config/mcpx.json`, merges Cursor/Claude/Codex/Windsurf/VS Code imports, expands `${ENV}` placeholders, and pools connections so you can reuse transports across multiple calls.
+- **Zero-config discovery.** `createRuntime()` merges `./mcp.json` with `~/.mcpx/mcp.json`, expands `${ENV}` placeholders, and pools connections so you can reuse transports across multiple calls. First run migrates Cursor/Claude/Codex/Windsurf/VS Code configs into `~/.mcpx/mcp.json` automatically.
 - **Flexible data formats.** Call tools with function syntax or structured JSON/JSON5/YAML/TOML data. Output defaults to TOON (LLM-friendly), with `--output` flags for raw/JSON/text formats.
 - **Friendly composable API.** `createServerProxy()` exposes tools as ergonomic camelCase methods, automatically applies JSON-schema defaults, validates required arguments, and hands back a `CallResult` with `.text()`, `.json()`, and `.content()` helpers.
 - **OAuth and stdio ergonomics.** Built-in OAuth caching, log tailing, and stdio wrappers let you work with HTTP, SSE, and stdio transports from the same interface.
@@ -143,7 +143,7 @@ mcpx call 'linear.create_comment({ issueId: "LNR-123", body: "Hello world" })'
 
 Helpful flags:
 
-- `--config <path>` -- custom config file (defaults to `./config/mcpx.json`).
+- `--config <path>` -- custom config file (overrides the default `./mcp.json` + `~/.mcpx/mcp.json` merge).
 - `--root <path>` -- working directory for stdio commands.
 - `--log-level <debug|info|warn|error>` -- adjust verbosity (respects `MCPX_LOG_LEVEL`).
 - `--oauth-timeout <ms>` -- shorten/extend the OAuth browser wait; same as `MCPX_OAUTH_TIMEOUT_MS` / `MCPX_OAUTH_TIMEOUT`.
@@ -166,7 +166,7 @@ mcpx list --http-url https://mcp.linear.app/mcp --name linear
 mcpx call --stdio "bun run ./local-server.ts" --name local-tools
 ```
 
-- Add `--persist config/mcpx.local.json` to save the inferred definition for future runs.
+- Add `--persist ~/.mcpx/mcp.json` (or any path) to save the inferred definition for future runs.
 - Use `--allow-http` if you truly need to hit a cleartext endpoint.
 - See [docs/adhoc.md](docs/adhoc.md) for a deep dive (env overrides, cwd, OAuth).
 
@@ -356,7 +356,7 @@ Call `mcpx list <server>` any time you need the TypeScript-style signature, opti
 
 ## Configuration Reference
 
-`config/mcpx.json` mirrors Cursor/Claude's shape:
+`mcp.json` (project) and `~/.mcpx/mcp.json` (user) share the Cursor/Claude schema:
 
 ```json5
 {
@@ -373,16 +373,15 @@ Call `mcpx list <server>` any time you need the TypeScript-style signature, opti
 			args: ['chrome-devtools-mcp@latest'],
 		},
 	},
-	imports: ['cursor', 'claude-code', 'claude-desktop', 'codex', 'windsurf', 'vscode'],
 }
 ```
 
 What MCPX handles for you:
 
-- `${VAR}`, `${VAR:-fallback}`, and `$env:VAR` interpolation for headers and env entries.
+- `${VAR}`, `${VAR:-fallback}`, and `$env:VAR` interpolation for headers and env entries across both files. Entries defined in `./mcp.json` override duplicates from `~/.mcpx/mcp.json`.
 - Automatic OAuth token caching under `~/.mcpx/<server>/` unless you override `tokenCacheDir`.
 - Stdio commands inherit the directory of the file that defined them (imports or local config).
-- Import precedence matches the array order; omit `imports` to use the default `["cursor", "claude-code", "claude-desktop", "codex", "windsurf", "vscode"]`.
+- First run populates `~/.mcpx/mcp.json` by migrating Cursor/Claude/Codex/Windsurf/VS Code configs; legacy `imports` arrays are only read during that migration helper.
 
 Provide `configPath` or `rootDir` to CLI/runtime calls when you juggle multiple config files side by side.
 
