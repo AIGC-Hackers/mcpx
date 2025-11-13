@@ -269,8 +269,14 @@ See [examples/README.md](examples/README.md) and [examples/batch-calls.txt](exam
 ### Homebrew
 
 ```bash
+# Add the tap
 brew tap AIGC-Hackers/mcpx
+
+# Install mcpx
 brew install mcpx
+
+# Or install in one command
+brew install AIGC-Hackers/mcpx/mcpx
 ```
 
 ### Run without installing
