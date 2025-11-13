@@ -12,6 +12,7 @@
 		"test": "vitest run",
 		"clean": "rimraf dist",
 		"prepublishOnly": "bun check && bun test && bun build",
+		"release": "./scripts/release.sh",
 		"mcpx:list": "bun src/cli.ts list",
 		"mcpx:call": "bun src/cli.ts call"
 	},
