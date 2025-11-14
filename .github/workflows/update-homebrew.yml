@@ -37,15 +37,10 @@ jobs:
           mkdir -p downloads
           cd downloads
 
-          echo "Downloading binaries for v$VERSION..."
-          curl -sL "https://github.com/AIGC-Hackers/mcpx/releases/download/v$VERSION/mcpx-darwin-arm64" -o mcpx-darwin-arm64
-          curl -sL "https://github.com/AIGC-Hackers/mcpx/releases/download/v$VERSION/mcpx-linux-arm64" -o mcpx-linux-arm64
-          curl -sL "https://github.com/AIGC-Hackers/mcpx/releases/download/v$VERSION/mcpx-linux-x64" -o mcpx-linux-x64
-
-          echo "Downloading shell completions..."
-          curl -sL "https://raw.githubusercontent.com/AIGC-Hackers/mcpx/v$VERSION/completions/_mcpx" -o _mcpx
-          curl -sL "https://raw.githubusercontent.com/AIGC-Hackers/mcpx/v$VERSION/completions/mcpx.bash" -o mcpx.bash
-          curl -sL "https://raw.githubusercontent.com/AIGC-Hackers/mcpx/v$VERSION/completions/mcpx.fish" -o mcpx.fish
+          echo "Downloading tar.gz packages for v$VERSION..."
+          curl -sL "https://github.com/AIGC-Hackers/mcpx/releases/download/v$VERSION/mcpx-darwin-arm64.tar.gz" -o mcpx-darwin-arm64.tar.gz
+          curl -sL "https://github.com/AIGC-Hackers/mcpx/releases/download/v$VERSION/mcpx-linux-arm64.tar.gz" -o mcpx-linux-arm64.tar.gz
+          curl -sL "https://github.com/AIGC-Hackers/mcpx/releases/download/v$VERSION/mcpx-linux-x64.tar.gz" -o mcpx-linux-x64.tar.gz
 
           ls -lh
 
@@ -53,12 +48,9 @@ jobs:
         id: checksums
         run: |
           cd downloads
-          echo "darwin_arm64=$(shasum -a 256 mcpx-darwin-arm64 | awk '{print $1}')" >> $GITHUB_OUTPUT
-          echo "linux_arm64=$(shasum -a 256 mcpx-linux-arm64 | awk '{print $1}')" >> $GITHUB_OUTPUT
-          echo "linux_x64=$(shasum -a 256 mcpx-linux-x64 | awk '{print $1}')" >> $GITHUB_OUTPUT
-          echo "zsh_completion=$(shasum -a 256 _mcpx | awk '{print $1}')" >> $GITHUB_OUTPUT
-          echo "bash_completion=$(shasum -a 256 mcpx.bash | awk '{print $1}')" >> $GITHUB_OUTPUT
-          echo "fish_completion=$(shasum -a 256 mcpx.fish | awk '{print $1}')" >> $GITHUB_OUTPUT
+          echo "darwin_arm64=$(shasum -a 256 mcpx-darwin-arm64.tar.gz | awk '{print $1}')" >> $GITHUB_OUTPUT
+          echo "linux_arm64=$(shasum -a 256 mcpx-linux-arm64.tar.gz | awk '{print $1}')" >> $GITHUB_OUTPUT
+          echo "linux_x64=$(shasum -a 256 mcpx-linux-x64.tar.gz | awk '{print $1}')" >> $GITHUB_OUTPUT
 
       - name: Update formula
         run: |
@@ -75,42 +67,25 @@ jobs:
             license "MIT"
 
             on_macos do
-              url "https://github.com/AIGC-Hackers/mcpx/releases/download/v$VERSION/mcpx-darwin-arm64"
+              url "https://github.com/AIGC-Hackers/mcpx/releases/download/v$VERSION/mcpx-darwin-arm64.tar.gz"
               sha256 "${{ steps.checksums.outputs.darwin_arm64 }}"
             end
 
             on_linux do
               if Hardware::CPU.arm?
-                url "https://github.com/AIGC-Hackers/mcpx/releases/download/v$VERSION/mcpx-linux-arm64"
+                url "https://github.com/AIGC-Hackers/mcpx/releases/download/v$VERSION/mcpx-linux-arm64.tar.gz"
                 sha256 "${{ steps.checksums.outputs.linux_arm64 }}"
               else
-                url "https://github.com/AIGC-Hackers/mcpx/releases/download/v$VERSION/mcpx-linux-x64"
+                url "https://github.com/AIGC-Hackers/mcpx/releases/download/v$VERSION/mcpx-linux-x64.tar.gz"
                 sha256 "${{ steps.checksums.outputs.linux_x64 }}"
               end
             end
 
-            resource "zsh-completion" do
-              url "https://raw.githubusercontent.com/AIGC-Hackers/mcpx/v$VERSION/completions/_mcpx"
-              sha256 "${{ steps.checksums.outputs.zsh_completion }}"
-            end
-
-            resource "bash-completion" do
-              url "https://raw.githubusercontent.com/AIGC-Hackers/mcpx/v$VERSION/completions/mcpx.bash"
-              sha256 "${{ steps.checksums.outputs.bash_completion }}"
-            end
-
-            resource "fish-completion" do
-              url "https://raw.githubusercontent.com/AIGC-Hackers/mcpx/v$VERSION/completions/mcpx.fish"
-              sha256 "${{ steps.checksums.outputs.fish_completion }}"
-            end
-
             def install
-              bin.install Dir["mcpx-*"].first => "mcpx"
-
-              # Install shell completions
-              resource("zsh-completion").stage { zsh_completion.install "_mcpx" }
-              resource("bash-completion").stage { bash_completion.install "mcpx.bash" => "mcpx" }
-              resource("fish-completion").stage { fish_completion.install "mcpx.fish" }
+              bin.install "mcpx"
+              zsh_completion.install "completions/_mcpx"
+              bash_completion.install "completions/mcpx.bash" => "mcpx"
+              fish_completion.install "completions/mcpx.fish"
             end
 
             test do
