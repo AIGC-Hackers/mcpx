@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/aigc-hackers-mcpx-badge.png)](https://mseep.ai/app/aigc-hackers-mcpx)
+
 # MCPX 🧳
 _Token-efficient MCP client built for LLMs and humans._
 
