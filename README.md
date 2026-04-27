@@ -74,7 +74,24 @@ Examples:
 ```bash
 mcpx posthog projects-get
 mcpx sentry whoami
-mcpx cf-graphql graphql_query --input '{ query: "query { viewer { accounts { name } } }" }'
+```
+
+For complex payloads, use a heredoc to keep the input readable:
+
+```bash
+mcpx cf-graphql graphql_query --input "$(cat <<'EOF'
+{
+  "query": "query GetWorkerAnalytics($accountTag: String!, $scriptName: String!, $since: Time!, $until: Time!) { viewer { accounts(filter: {accountTag: $accountTag}) { workersInvocationsAdaptive(limit: 1000, filter: {scriptName: $scriptName, datetime_geq: $since, datetime_leq: $until}, orderBy: [datetimeHour_ASC]) { dimensions { datetimeHour scriptName status } sum { requests subrequests errors duration } quantiles { cpuTimeP50 cpuTimeP99 } } } } }",
+  "operationName": "GetWorkerAnalytics",
+  "variables": {
+    "accountTag": "abc123def456",
+    "scriptName": "my-worker",
+    "since": "2026-04-20T00:00:00Z",
+    "until": "2026-04-27T00:00:00Z"
+  }
+}
+EOF
+)"
 ```
 
 `--input` is the primary input path. It accepts argc input values, including JSON,
