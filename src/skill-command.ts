@@ -15,7 +15,7 @@ export async function runSkillCommand(
   const availableServers = Object.keys(service.config.servers).sort();
   if (availableServers.length === 0) {
     throw new Error(
-      'No MCP servers are registered. Run "mcpx add --name <name> --url <url>" first.',
+      'No MCP servers are registered. Run "mcpx @add --name <name> --url <url>" first.',
     );
   }
 

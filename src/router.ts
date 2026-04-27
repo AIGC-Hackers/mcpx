@@ -4,7 +4,7 @@ import * as v from "valibot";
 
 import { removeServerConfig, upsertServerConfig } from "./config";
 import { callMcpTool } from "./mcp-client";
-import { describeAuth, discoverServer, refreshServer } from "./discovery";
+import { discoverServer, refreshServer } from "./discovery";
 import { jsonSchemaToStandardSchema } from "./json-schema-standard";
 import { assertServerName } from "./names";
 import { printOutput, type McpxContext } from "./output";
@@ -14,7 +14,6 @@ import { removeOAuthToken } from "./token-cache";
 import { MCPX_VERSION } from "./version";
 
 const s = toStandardJsonSchema;
-const RESERVED_SERVER_NAMES = new Set(["add", "remove", "skill"]);
 
 type HandlerOptions<TInput extends Record<string, unknown>> = {
   input: TInput;
@@ -84,25 +83,25 @@ function normalizeArgv(argv: string[]): string[] | null {
 function buildRouter(service: ProjectService): Router {
   return {
     ...buildServerRouter(service),
-    add: c
+    "@add": c
       .meta({
         description: "Add a global MCP server and discover its auth and tool schema.",
         examples: [
-          "mcpx add --name posthog --url https://mcp.posthog.com/mcp --bearer-env POSTHOG_AUTH_HEADER",
+          "mcpx @add --name posthog --url https://mcp.posthog.com/mcp --bearer-env POSTHOG_AUTH_HEADER",
         ],
       })
       .input(addInput),
-    remove: c
+    "@remove": c
       .meta({
         description: "Remove a global MCP server and its cached credentials.",
-        examples: ["mcpx remove --name posthog"],
+        examples: ["mcpx @remove --name posthog"],
       })
       .input(removeInput),
-    skill: c
+    "@skill": c
       .meta({
         description:
           "Generate a project skill that teaches agents which global MCP servers to use.",
-        examples: ["mcpx skill", "mcpx skill --server posthog --server sentry"],
+        examples: ["mcpx @skill", "mcpx @skill --server posthog --server sentry"],
       })
       .input(skillInput),
   };
@@ -120,12 +119,13 @@ function buildServerRouter(service: ProjectService): Record<string, Router> {
         })
         .input(jsonSchemaToStandardSchema(tool.inputSchema));
     }
-    servers[serverName] = group(
-      { description: `${serverName} tools (${describeAuth(server.auth)})` },
-      children,
-    );
+    servers[serverName] = group({ description: describeServerTools(tools.length) }, children);
   }
   return servers;
+}
+
+function describeServerTools(count: number): string {
+  return `(${count} ${count === 1 ? "tool" : "tools"})`;
 }
 
 function buildHandlers(service: ProjectService, cwd: string): Record<string, unknown> {
@@ -145,14 +145,11 @@ function buildHandlers(service: ProjectService, cwd: string): Record<string, unk
     handlers[serverName] = serverHandlers;
   }
 
-  handlers.add = async (
+  handlers["@add"] = async (
     options: HandlerOptions<{ name: string; url: string; bearerEnv?: string }>,
   ) => {
     const input = options.input;
     const name = assertServerName(input.name);
-    if (RESERVED_SERVER_NAMES.has(name)) {
-      throw new Error(`"${name}" is reserved by mcpx and cannot be used as an MCP server name.`);
-    }
     const discoverOptions: { url: string; bearerEnv?: string } = {
       url: input.url,
     };
@@ -171,7 +168,7 @@ function buildHandlers(service: ProjectService, cwd: string): Record<string, unk
     );
   };
 
-  handlers.remove = async (options: HandlerOptions<{ name: string }>) => {
+  handlers["@remove"] = async (options: HandlerOptions<{ name: string }>) => {
     const name = assertServerName(options.input.name);
     const removed = await removeServerConfig(name);
     if (!removed) {
@@ -189,7 +186,7 @@ function buildHandlers(service: ProjectService, cwd: string): Record<string, unk
     );
   };
 
-  handlers.skill = async (options: HandlerOptions<{ server?: string | string[] }>) => {
+  handlers["@skill"] = async (options: HandlerOptions<{ server?: string | string[] }>) => {
     await runSkillCommand(service, cwd, options.input);
   };
 
@@ -219,5 +216,6 @@ export const __test = {
   buildServerRouter,
   buildRouter,
   buildHandlers,
+  describeServerTools,
   normalizeArgv,
 };

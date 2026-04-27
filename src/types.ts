@@ -18,11 +18,14 @@ export type OAuthServerMetadata = {
   registrationEndpoint?: string;
   scopesSupported?: string[];
   codeChallengeMethodsSupported?: string[];
+  tokenEndpointAuthMethodsSupported?: string[];
 };
 
 export type OAuthToken = {
   accessToken: string;
   tokenType: string;
+  clientId?: string;
+  clientSecretKey?: string;
   refreshToken?: string;
   expiresAt?: string;
   scope?: string;
@@ -31,6 +34,7 @@ export type OAuthToken = {
 export type TokenCache = {
   version: 1;
   oauth: Record<string, OAuthToken>;
+  oauthClientSecrets?: Record<string, string>;
 };
 
 export type ToolDefinition = {

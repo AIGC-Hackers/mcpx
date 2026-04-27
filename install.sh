@@ -1,22 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$ROOT_DIR"
-
+REPO="${MCPX_REPO:-AIGC-Hackers/mcpx}"
+VERSION="${MCPX_VERSION:-latest}"
 BIN_DIR="${MCPX_INSTALL_DIR:-$HOME/.local/bin}"
-SOURCE="dist/mcpx"
 
 usage() {
   cat <<'USAGE'
-Usage: install.sh [--dir DIR] [--source PATH]
+Usage: install.sh [--dir DIR] [--version VERSION] [--repo OWNER/REPO]
 
-Install the built mcpx JS bundle.
+Download and install the mcpx executable JS bundle from GitHub Releases.
 
 Options:
-  --dir DIR      Install directory. Default: $MCPX_INSTALL_DIR or ~/.local/bin.
-  --source PATH  Bundle to install. Default: dist/mcpx.
-  -h, --help     Show this help.
+  --dir DIR          Install directory. Default: $MCPX_INSTALL_DIR or ~/.local/bin.
+  --version VERSION  Release version or tag. Default: $MCPX_VERSION or latest.
+  --repo OWNER/REPO  GitHub repository. Default: $MCPX_REPO or AIGC-Hackers/mcpx.
+  -h, --help         Show this help.
 USAGE
 }
 
@@ -30,12 +29,20 @@ while [[ $# -gt 0 ]]; do
       BIN_DIR="$2"
       shift 2
       ;;
-    --source)
+    --version)
       if [[ $# -lt 2 ]]; then
-        echo "Missing value for --source" >&2
+        echo "Missing value for --version" >&2
         exit 1
       fi
-      SOURCE="$2"
+      VERSION="$2"
+      shift 2
+      ;;
+    --repo)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --repo" >&2
+        exit 1
+      fi
+      REPO="$2"
       shift 2
       ;;
     -h | --help)
@@ -50,13 +57,25 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ ! -x "$SOURCE" ]]; then
-  echo "$SOURCE is missing or not executable; building first."
-  ./scripts/build.sh --outfile "$SOURCE"
+if ! command -v curl >/dev/null 2>&1; then
+  echo "curl is required to install mcpx." >&2
+  exit 1
 fi
 
+if [[ "$VERSION" == "latest" ]]; then
+  URL="https://github.com/$REPO/releases/latest/download/mcpx"
+else
+  URL="https://github.com/$REPO/releases/download/$VERSION/mcpx"
+fi
+
+TMP_FILE="$(mktemp)"
+trap 'rm -f "$TMP_FILE"' EXIT
+
+echo "Downloading mcpx from $URL"
+curl -fsSL "$URL" -o "$TMP_FILE"
+
 mkdir -p "$BIN_DIR"
-cp "$SOURCE" "$BIN_DIR/mcpx"
+cp "$TMP_FILE" "$BIN_DIR/mcpx"
 chmod +x "$BIN_DIR/mcpx"
 
 echo "Installed mcpx to $BIN_DIR/mcpx"

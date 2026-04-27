@@ -18,10 +18,10 @@ export async function readTokenCache(): Promise<TokenCache> {
     if (parsed.version !== 1 || !parsed.oauth || typeof parsed.oauth !== "object") {
       throw new Error(`Invalid mcpx token cache at ${filePath}.`);
     }
-    return parsed;
+    return { version: 1, oauth: parsed.oauth, oauthClientSecrets: parsed.oauthClientSecrets ?? {} };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { version: 1, oauth: {} };
+      return { version: 1, oauth: {}, oauthClientSecrets: {} };
     }
     throw error;
   }
@@ -41,8 +41,38 @@ export async function getOAuthToken(tokenKey: string): Promise<OAuthToken | unde
   return cache.oauth[tokenKey];
 }
 
-export async function putOAuthToken(tokenKey: string, token: OAuthToken): Promise<void> {
+export async function getOAuthTokenForUpdate(tokenKey: string): Promise<{
+  cache: TokenCache;
+  token: OAuthToken | undefined;
+}> {
   const cache = await readTokenCache();
+  return { cache, token: cache.oauth[tokenKey] };
+}
+
+export async function putOAuthTokenWithClientSecret(
+  tokenKey: string,
+  token: OAuthToken,
+  clientSecret?: string,
+): Promise<void> {
+  const cache = await readTokenCache();
+  cache.oauth[tokenKey] = token;
+  if (clientSecret && token.clientSecretKey) {
+    cache.oauthClientSecrets ??= {};
+    cache.oauthClientSecrets[token.clientSecretKey] = clientSecret;
+  }
+  await writeTokenCache(cache);
+}
+
+export async function getOAuthClientSecret(secretKey: string): Promise<string | undefined> {
+  const cache = await readTokenCache();
+  return cache.oauthClientSecrets?.[secretKey];
+}
+
+export async function putOAuthTokenInCache(
+  cache: TokenCache,
+  tokenKey: string,
+  token: OAuthToken,
+): Promise<void> {
   cache.oauth[tokenKey] = token;
   await writeTokenCache(cache);
 }
@@ -57,7 +87,11 @@ export async function removeOAuthToken(tokenKey: string): Promise<boolean> {
 }
 
 export function removeOAuthTokenFromCache(cache: TokenCache, tokenKey: string): boolean {
-  if (!cache.oauth[tokenKey]) return false;
+  const token = cache.oauth[tokenKey];
+  if (!token) return false;
+  if (token.clientSecretKey && cache.oauthClientSecrets) {
+    delete cache.oauthClientSecrets[token.clientSecretKey];
+  }
   delete cache.oauth[tokenKey];
   return true;
 }

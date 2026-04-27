@@ -19,6 +19,8 @@ describe("mcpx skill template", () => {
 
     expect(filePath).toBe(join(cwd, ".agents", "skills", "mcpx", "SKILL.md"));
     expect(content).toContain('mcpx --schema=".{posthog,sentry}"');
+    expect(content).toContain("`.server.{tool-a,tool-b,tool-c}`");
+    expect(content).toContain("mcpx --schema=.posthog.{projects-get,alerts-list,alert-create}");
     expect(content).toContain("mcpx <server> <tool> --input '{ }'");
   });
 });

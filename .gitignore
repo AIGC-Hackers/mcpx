@@ -1,4 +1,5 @@
 node_modules
+.agents/
 .scratch/
 .DS_Store
 dist

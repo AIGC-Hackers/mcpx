@@ -11,50 +11,53 @@ export async function discoverAuth(
   }
 
   const authenticate = response.headers.get("www-authenticate");
-  const metadataUrl = parseResourceMetadataUrl(authenticate);
-  if (!metadataUrl) {
+  const metadataUrls = parseResourceMetadataUrls(authenticate);
+  if (metadataUrls.length === 0) {
     return {
       kind: "unknown",
       reason: `Server returned ${response.status} without OAuth resource metadata.`,
     };
   }
 
-  try {
-    const metadataResponse = await fetch(metadataUrl, {
-      headers: { Accept: "application/json" },
-    });
-    if (!metadataResponse.ok) {
-      return {
+  for (const metadataUrl of metadataUrls) {
+    try {
+      const metadataResponse = await fetch(metadataUrl, {
+        headers: { Accept: "application/json" },
+      });
+      if (!metadataResponse.ok) continue;
+
+      const metadata = (await metadataResponse.json()) as Record<string, unknown>;
+      const result: AuthDiscovery = {
         kind: "oauth",
-        confidence: "inferred",
+        confidence: "confirmed",
         resourceMetadataUrl: metadataUrl,
       };
+      const authorizationServers = stringArray(metadata.authorization_servers);
+      if (authorizationServers) result.authorizationServers = authorizationServers;
+      const scopesSupported = stringArray(metadata.scopes_supported);
+      if (scopesSupported) result.scopesSupported = scopesSupported;
+      return result;
+    } catch {
+      continue;
     }
-
-    const metadata = (await metadataResponse.json()) as Record<string, unknown>;
-    const result: AuthDiscovery = {
-      kind: "oauth",
-      confidence: "confirmed",
-      resourceMetadataUrl: metadataUrl,
-    };
-    const authorizationServers = stringArray(metadata.authorization_servers);
-    if (authorizationServers) result.authorizationServers = authorizationServers;
-    const scopesSupported = stringArray(metadata.scopes_supported);
-    if (scopesSupported) result.scopesSupported = scopesSupported;
-    return result;
-  } catch {
-    return {
-      kind: "oauth",
-      confidence: "inferred",
-      resourceMetadataUrl: metadataUrl,
-    };
   }
+
+  const fallbackMetadataUrl = metadataUrls[metadataUrls.length - 1]!;
+  return {
+    kind: "oauth",
+    confidence: "inferred",
+    resourceMetadataUrl: fallbackMetadataUrl,
+  };
 }
 
 export function parseResourceMetadataUrl(header: string | null): string | undefined {
-  if (!header) return undefined;
-  const match = header.match(/resource_metadata="([^"]+)"/i);
-  return match?.[1];
+  return parseResourceMetadataUrls(header).at(-1);
+}
+
+export function parseResourceMetadataUrls(header: string | null): string[] {
+  if (!header) return [];
+  const matches = header.matchAll(/resource_metadata="([^"]+)"/gi);
+  return [...matches].map((match) => match[1]).filter((url): url is string => !!url);
 }
 
 function stringArray(value: unknown): string[] | undefined {

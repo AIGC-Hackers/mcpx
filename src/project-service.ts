@@ -17,7 +17,7 @@ export async function loadProjectService(): Promise<ProjectService> {
       const server = config.servers[name];
       if (!server) {
         throw new Error(
-          `Unknown MCP server "${name}". Run "mcpx add --name ${name} --url <url>" first.`,
+          `Unknown MCP server "${name}". Run "mcpx @add --name ${name} --url <url>" first.`,
         );
       }
       if (server.tools && server.tools.length > 0) {

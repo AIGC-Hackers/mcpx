@@ -11,12 +11,17 @@ describe("token cache", () => {
         posthog: {
           accessToken: "secret",
           tokenType: "Bearer",
+          clientSecretKey: "oauth-client:posthog",
         },
+      },
+      oauthClientSecrets: {
+        "oauth-client:posthog": "client-secret",
       },
     };
 
     expect(removeOAuthTokenFromCache(cache, "posthog")).toBe(true);
     expect(cache.oauth.posthog).toBeUndefined();
+    expect(cache.oauthClientSecrets?.["oauth-client:posthog"]).toBeUndefined();
   });
 
   it("keeps cache unchanged when removing an unknown token", () => {

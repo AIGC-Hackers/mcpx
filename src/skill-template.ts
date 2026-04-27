@@ -39,7 +39,17 @@ Inspect the available tool surface before calling tools:
 mcpx --schema="${selector}"
 \`\`\`
 
-Use narrower selectors when you already know the target server or tool.
+Use schema selectors to narrow large MCP surfaces before choosing a tool:
+
+- \`.server\` shows one server, for example \`mcpx --schema=.posthog\`
+- \`.server.tool\` shows one tool, for example \`mcpx --schema=.posthog.projects-get\`
+- \`.{a,b}\` selects multiple keys at the current level
+- \`.server.{tool-a,tool-b,tool-c}\` shows a short list of candidate tools
+
+Normal workflow: inspect the project-approved servers first, identify likely
+tool names from the outline, then run a narrower selector such as
+\`mcpx --schema=.posthog.{projects-get,alerts-list,alert-create}\` before
+calling a tool.
 
 ## Call
 

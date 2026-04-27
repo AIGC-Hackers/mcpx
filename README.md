@@ -1,39 +1,175 @@
-# mcpx
+# MCPX
 
-Project-scoped MCP command surface for agents.
+MCPX is a Bun-only command line tool that turns remote MCP servers into an
+agent-friendly command surface.
 
-```bash
-mcpx add --name posthog --url https://mcp.posthog.com/mcp --bearer-env POSTHOG_AUTH_HEADER
-mcpx remove --name posthog
-mcpx --schema
-mcpx posthog alert-create --input '{ }'
-mcpx skill --server posthog --server sentry
-```
-
-`mcpx add` stores MCP servers in the user's global registry at
-`~/.agents/mcpx/servers.json`. Projects do not need their own MCP config. Use
-`mcpx skill` to generate a project-local `.agents/skills/mcpx/SKILL.md` that tells
-agents which global MCP servers to explore with `mcpx --schema=".{...}"`.
-
-## Build
+It keeps MCP server registrations in a global user registry, discovers tool
+schemas, handles OAuth where possible, and exposes each MCP server as a root
+command:
 
 ```bash
-bun run build
+mcpx posthog projects-get --input '{}'
+mcpx sentry search-issues --input '{"query":"is:unresolved"}'
 ```
 
-The build script writes an executable Bun JS bundle to `dist/mcpx`. To bump the
-package version before building:
+MCPX is designed for agents. The command surface is intentionally schema-first,
+stable, and explicit: tool calls pass input through `--input`, while MCPX's own
+control commands live under the `@` namespace.
 
-```bash
-./scripts/build.sh --bump patch
-```
+## Requirements
+
+- Bun
+- macOS, Linux, or any environment that can run Bun executables
 
 ## Install
 
+Install the latest release:
+
 ```bash
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/AIGC-Hackers/mcpx/main/install.sh | bash
 ```
 
-By default this installs `dist/mcpx` to `~/.local/bin/mcpx`. Override the target
-directory with `MCPX_INSTALL_DIR=/path/to/bin ./install.sh` or `./install.sh --dir
-/path/to/bin`.
+By default, the installer downloads the executable JS bundle from GitHub Releases
+and installs it to `~/.local/bin/mcpx`.
+
+Set `MCPX_INSTALL_DIR` to choose another install directory.
+
+## Add MCP Servers
+
+Register a remote MCP server globally:
+
+```bash
+mcpx @add --name posthog --url https://mcp.posthog.com/mcp
+mcpx @add --name sentry --url https://mcp.sentry.dev/mcp
+mcpx @add --name cf-docs --url https://docs.mcp.cloudflare.com/mcp
+mcpx @add --name cf-bindings --url https://bindings.mcp.cloudflare.com/mcp
+mcpx @add --name cf-observability --url https://observability.mcp.cloudflare.com/mcp
+```
+
+MCPX stores server configuration in:
+
+```text
+~/.agents/mcpx/servers.json
+```
+
+OAuth tokens and client secrets are stored separately in the global token cache:
+
+```text
+~/.agents/mcpx/tokens.json
+```
+
+Project directories do not need MCP config files. A project should decide which
+global servers are relevant by using schema selectors or a generated skill.
+
+## Call Tools
+
+Call tools through the server command:
+
+```bash
+mcpx <server> <tool> --input '<json-or-json5>'
+```
+
+Examples:
+
+```bash
+mcpx posthog projects-get --input '{}'
+mcpx sentry whoami --input '{}'
+mcpx cf-graphql graphql_query --input '{ query: "query { viewer { accounts { name } } }" }'
+```
+
+`--input` is the primary input path. It accepts argc input values, including JSON,
+JSON5, stdin, and `@file` inputs.
+
+## Discover Schemas
+
+Print the command schema for agents:
+
+```bash
+mcpx --schema
+```
+
+Focus on one server:
+
+```bash
+mcpx --schema=.posthog
+```
+
+Focus on a set of servers:
+
+```bash
+mcpx --schema='.{posthog,sentry}'
+```
+
+Focus on an internal MCPX command:
+
+```bash
+mcpx --schema='.["@add"]'
+```
+
+## Control Commands
+
+MCPX control commands use the `@` namespace so they do not collide with server
+names:
+
+```bash
+mcpx @add --name <server> --url <mcp-url>
+mcpx @remove --name <server>
+mcpx @skill
+```
+
+Server names cannot start with `@`.
+
+## Authentication
+
+When `@add` detects OAuth, MCPX tries to complete authentication immediately.
+For OAuth servers that support dynamic client registration, MCPX registers a
+client automatically.
+
+For OAuth servers that do not support dynamic client registration, such as
+Slack, MCPX prompts for a manual `client_id` and `client_secret`. These providers
+usually require a preconfigured redirect URL. MCPX uses:
+
+```text
+http://127.0.0.1:65245/callback
+```
+
+Add and save that exact Redirect URL in the provider app settings before
+continuing the prompt.
+
+When an OAuth token is close to expiry, MCPX refreshes it before calling the MCP
+tool and then continues the original command.
+
+## Output
+
+MCPX optimizes output for humans and agents by default:
+
+- text MCP content is printed directly
+- JSON text content is rendered as TOON
+- non-text content is saved to a temporary file and printed as `file saved <path>`
+
+Use `--raw` to preserve raw server text output:
+
+```bash
+mcpx posthog projects-get --raw --input '{}'
+```
+
+## Project Skills
+
+Generate a project-local skill that tells agents which global MCP servers to use:
+
+```bash
+mcpx @skill --server posthog --server sentry
+```
+
+This writes:
+
+```text
+.agents/skills/mcpx/SKILL.md
+```
+
+The generated skill instructs agents to discover tools with focused schema
+selectors and call MCP tools through MCPX.
+
+## License
+
+MIT
