@@ -8,7 +8,7 @@ schemas, handles OAuth where possible, and exposes each MCP server as a root
 command:
 
 ```bash
-mcpx posthog projects-get --input '{}'
+mcpx posthog projects-get
 mcpx sentry search-issues --input '{"query":"is:unresolved"}'
 ```
 
