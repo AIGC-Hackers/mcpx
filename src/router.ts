@@ -11,6 +11,7 @@ import { printOutput, type McpxContext } from "./output";
 import { loadProjectService, type ProjectService } from "./project-service";
 import { runSkillCommand } from "./skill-command";
 import { removeOAuthToken } from "./token-cache";
+import { MCPX_VERSION } from "./version";
 
 const s = toStandardJsonSchema;
 const RESERVED_SERVER_NAMES = new Set(["add", "remove", "skill"]);
@@ -52,7 +53,7 @@ export async function runMcpx(argv: string[], cwd: string): Promise<void> {
 
   const app = cli(buildRouter(service), {
     name: "mcpx",
-    version: "0.1.0",
+    version: MCPX_VERSION,
     description: "Global MCP registry and agent-facing command surface.",
     globals: globalInput,
     context: (globals) => {

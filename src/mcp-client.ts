@@ -3,12 +3,13 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 
 import { resolveHeaders } from "./headers";
 import type { McpTool, ServerConfig } from "./types";
+import { MCPX_VERSION } from "./version";
 
 export async function withMcpClient<T>(
   server: ServerConfig,
   run: (client: Client) => Promise<T>,
 ): Promise<T> {
-  const client = new Client({ name: "mcpx", version: "0.1.0" });
+  const client = new Client({ name: "mcpx", version: MCPX_VERSION });
   const headers = await resolveHeaders(server);
   const transport = new StreamableHTTPClientTransport(new URL(server.url), {
     requestInit: {

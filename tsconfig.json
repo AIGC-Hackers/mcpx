@@ -8,6 +8,7 @@
     "exactOptionalPropertyTypes": true,
     "skipLibCheck": true,
     "types": ["bun"],
+    "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "noEmit": true
   },

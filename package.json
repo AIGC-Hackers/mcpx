@@ -7,7 +7,7 @@
   },
   "type": "module",
   "scripts": {
-    "build": "bun build ./src/main.ts --compile --minify --sourcemap --outfile ./dist/mcpx",
+    "build": "./scripts/build.sh",
     "check": "bun run typecheck && bun test && bunx oxfmt --check package.json tsconfig.json README.md .gitignore .agents/backlog.md src tests",
     "format": "bunx oxfmt package.json tsconfig.json README.md .gitignore .agents/backlog.md src tests",
     "typecheck": "tsgo --project tsconfig.json --noEmit",
