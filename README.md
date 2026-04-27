@@ -1,6 +1,6 @@
-# MCPX
+# mcpx
 
-MCPX is a Bun-only command line tool that turns remote MCP servers into an
+mcpx is a command line tool that turns remote MCP servers into an
 agent-friendly command surface.
 
 It keeps MCP server registrations in a global user registry, discovers tool
@@ -12,8 +12,8 @@ mcpx posthog projects-get
 mcpx sentry search-issues --input '{"query":"is:unresolved"}'
 ```
 
-MCPX is designed for agents. The command surface is intentionally schema-first,
-stable, and explicit: tool calls pass input through `--input`, while MCPX's own
+mcpx is designed for agents. The command surface is intentionally schema-first,
+stable, and explicit: tool calls pass input through `--input`, while mcpx's own
 control commands live under the `@` namespace.
 
 ## Requirements
@@ -46,7 +46,7 @@ mcpx @add --name cf-bindings --url https://bindings.mcp.cloudflare.com/mcp
 mcpx @add --name cf-observability --url https://observability.mcp.cloudflare.com/mcp
 ```
 
-MCPX stores server configuration in:
+mcpx stores server configuration in:
 
 ```text
 ~/.agents/mcpx/servers.json
@@ -100,7 +100,7 @@ Focus on a set of servers:
 mcpx --schema='.{posthog,sentry}'
 ```
 
-Focus on an internal MCPX command:
+Focus on an internal mcpx command:
 
 ```bash
 mcpx --schema='.["@add"]'
@@ -108,7 +108,7 @@ mcpx --schema='.["@add"]'
 
 ## Control Commands
 
-MCPX control commands use the `@` namespace so they do not collide with server
+mcpx control commands use the `@` namespace so they do not collide with server
 names:
 
 ```bash
@@ -121,13 +121,13 @@ Server names cannot start with `@`.
 
 ## Authentication
 
-When `@add` detects OAuth, MCPX tries to complete authentication immediately.
-For OAuth servers that support dynamic client registration, MCPX registers a
+When `@add` detects OAuth, mcpx tries to complete authentication immediately.
+For OAuth servers that support dynamic client registration, mcpx registers a
 client automatically.
 
 For OAuth servers that do not support dynamic client registration, such as
-Slack, MCPX prompts for a manual `client_id` and `client_secret`. These providers
-usually require a preconfigured redirect URL. MCPX uses:
+Slack, mcpx prompts for a manual `client_id` and `client_secret`. These providers
+usually require a preconfigured redirect URL. mcpx uses:
 
 ```text
 http://127.0.0.1:65245/callback
@@ -136,12 +136,12 @@ http://127.0.0.1:65245/callback
 Add and save that exact Redirect URL in the provider app settings before
 continuing the prompt.
 
-When an OAuth token is close to expiry, MCPX refreshes it before calling the MCP
+When an OAuth token is close to expiry, mcpx refreshes it before calling the MCP
 tool and then continues the original command.
 
 ## Output
 
-MCPX optimizes output for humans and agents by default:
+mcpx optimizes output for humans and agents by default:
 
 - text MCP content is printed directly
 - JSON text content is rendered as TOON
@@ -168,7 +168,7 @@ This writes:
 ```
 
 The generated skill instructs agents to discover tools with focused schema
-selectors and call MCP tools through MCPX.
+selectors and call MCP tools through mcpx.
 
 ## License
 
