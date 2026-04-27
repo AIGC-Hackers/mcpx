@@ -1,346 +1,308 @@
-import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import fs from "node:fs/promises";
-import http from "node:http";
-import os from "node:os";
-import path from "node:path";
-import { URL } from "node:url";
-import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
-import type {
-  OAuthClientInformationMixed,
-  OAuthClientMetadata,
-  OAuthTokens,
-} from "@modelcontextprotocol/sdk/shared/auth.js";
-import type { ServerDefinition } from "@/config.js";
-import { readJsonFile, writeJsonFile } from "@/fs-json.js";
+import { createHash, randomBytes } from "node:crypto";
 
-const CALLBACK_HOST = "127.0.0.1";
+import { putOAuthToken } from "./token-cache";
+import type { AuthDiscovery, OAuthServerMetadata, OAuthToken } from "./types";
+
+type OAuthClientRegistration = {
+  clientId: string;
+};
+
+type OAuthCallbackResult = {
+  code: string;
+  state: string;
+};
+
+type OAuthCallbackServer = {
+  redirectUri: string;
+  result: Promise<OAuthCallbackResult>;
+  close: () => void;
+};
+
+type AuthenticatedOAuth = Extract<AuthDiscovery, { kind: "oauth-token" }>;
+type DiscoveredOAuth = Extract<AuthDiscovery, { kind: "oauth" }>;
+
+const LOCALHOST = "127.0.0.1";
 const CALLBACK_PATH = "/callback";
+const CALLBACK_TIMEOUT_MS = 5 * 60 * 1000;
 
-interface Deferred<T> {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-  reject: (reason?: unknown) => void;
-}
+export async function authenticateOAuthServer(
+  serverName: string,
+  resourceUrl: URL,
+  auth: DiscoveredOAuth,
+): Promise<AuthenticatedOAuth> {
+  const authorizationServer = auth.authorizationServers?.[0];
+  if (!authorizationServer) {
+    throw new Error("OAuth authentication requires an authorization server URL.");
+  }
 
-// createDeferred produces a minimal promise wrapper for async coordination.
-function createDeferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
+  const metadata = await fetchAuthorizationServerMetadata(authorizationServer);
+  const verifier = base64Url(randomBytes(32));
+  const challenge = base64Url(createHash("sha256").update(verifier).digest());
+  const state = base64Url(randomBytes(24));
+  const callback = await waitForOAuthCallback(state);
 
-// openExternal attempts to launch the system browser cross-platform.
-function openExternal(url: string) {
-  const platform = process.platform;
-  const stdio = "ignore";
   try {
-    if (platform === "darwin") {
-      const child = spawn("open", [url], { stdio, detached: true });
-      child.unref();
-    } else if (platform === "win32") {
-      const child = spawn("cmd", ["/c", "start", '""', url], {
-        stdio,
-        detached: true,
-      });
-      child.unref();
-    } else {
-      const child = spawn("xdg-open", [url], { stdio, detached: true });
-      child.unref();
-    }
-  } catch {
-    // best-effort: fall back to printing URL
+    const client = await registerOAuthClient(metadata, callback.redirectUri);
+    const scope = chooseOAuthScope(auth.scopesSupported, metadata.scopesSupported);
+    const authorizationUrl = buildAuthorizationUrl({
+      metadata,
+      clientId: client.clientId,
+      redirectUri: callback.redirectUri,
+      resourceUrl: resourceUrl.toString(),
+      scope,
+      state,
+      challenge,
+    });
+
+    console.error(`Opening browser for OAuth authentication: ${authorizationUrl}`);
+    openBrowser(authorizationUrl);
+
+    const callbackResult = await callback.result;
+    const token = await exchangeAuthorizationCode({
+      metadata,
+      clientId: client.clientId,
+      redirectUri: callback.redirectUri,
+      resourceUrl: resourceUrl.toString(),
+      code: callbackResult.code,
+      verifier,
+    });
+
+    const tokenKey = `${serverName}:${metadata.issuer}`;
+    await putOAuthToken(tokenKey, token);
+    return { kind: "oauth-token", tokenKey, confidence: "confirmed" };
+  } finally {
+    callback.close();
   }
 }
 
-// ensureDirectory guarantees a directory exists before writing JSON blobs.
-// Sets mode 0o700 (owner-only) to protect sensitive OAuth data.
-async function ensureDirectory(dir: string) {
-  await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+export async function fetchAuthorizationServerMetadata(
+  issuer: string,
+): Promise<OAuthServerMetadata> {
+  const metadataUrl = new URL("/.well-known/oauth-authorization-server", issuer);
+  const response = await fetch(metadataUrl, { headers: { Accept: "application/json" } });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch OAuth server metadata from ${metadataUrl}.`);
+  }
+
+  const metadata = (await response.json()) as Record<string, unknown>;
+  const authorizationEndpoint = stringField(metadata.authorization_endpoint);
+  const tokenEndpoint = stringField(metadata.token_endpoint);
+  const issuerValue = stringField(metadata.issuer) ?? issuer;
+  if (!authorizationEndpoint || !tokenEndpoint) {
+    throw new Error(`OAuth server metadata at ${metadataUrl} is missing required endpoints.`);
+  }
+
+  const result: OAuthServerMetadata = {
+    issuer: issuerValue,
+    authorizationEndpoint,
+    tokenEndpoint,
+  };
+  const registrationEndpoint = stringField(metadata.registration_endpoint);
+  if (registrationEndpoint) result.registrationEndpoint = registrationEndpoint;
+  const scopesSupported = stringArray(metadata.scopes_supported);
+  if (scopesSupported) result.scopesSupported = scopesSupported;
+  const methods = stringArray(metadata.code_challenge_methods_supported);
+  if (methods) result.codeChallengeMethodsSupported = methods;
+  return result;
 }
 
-// FileOAuthClientProvider persists OAuth session artifacts to disk and captures callback redirects.
-class FileOAuthClientProvider implements OAuthClientProvider {
-  private readonly tokenPath: string;
-  private readonly clientInfoPath: string;
-  private readonly metadata: OAuthClientMetadata;
-  private readonly logger: OAuthLogger;
-  private redirectUrlValue: URL;
-  private authorizationDeferred: Deferred<string> | null = null;
-  private cachedAuthorizationCode: string | null = null;
-  private authFinishedFlag = false;
-  private server?: http.Server;
-  private stateValue: string;
-  private codeVerifierValue: string;
+export async function registerOAuthClient(
+  metadata: OAuthServerMetadata,
+  redirectUri: string,
+): Promise<OAuthClientRegistration> {
+  if (!metadata.registrationEndpoint) {
+    throw new Error("OAuth server does not advertise dynamic client registration.");
+  }
 
-  private constructor(
-    private readonly definition: ServerDefinition,
-    tokenCacheDir: string,
-    redirectUrl: URL,
-    logger: OAuthLogger,
-  ) {
-    this.tokenPath = path.join(tokenCacheDir, "tokens.json");
-    this.clientInfoPath = path.join(tokenCacheDir, "client.json");
-    this.redirectUrlValue = redirectUrl;
-    this.logger = logger;
-    this.stateValue = randomUUID();
-    this.codeVerifierValue = randomUUID();
-    this.metadata = {
-      client_name: definition.clientName ?? `mcpx (${definition.name})`,
-      redirect_uris: [this.redirectUrlValue.toString()],
+  const response = await fetch(metadata.registrationEndpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({
+      client_name: "MCPX",
+      redirect_uris: [redirectUri],
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
       token_endpoint_auth_method: "none",
-      scope: "mcp:tools",
-    };
+      application_type: "native",
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`OAuth dynamic client registration failed: ${await response.text()}`);
   }
 
-  static async create(
-    definition: ServerDefinition,
-    logger: OAuthLogger,
-  ): Promise<{
-    provider: FileOAuthClientProvider;
-    close: () => Promise<void>;
-  }> {
-    const tokenDir = definition.tokenCacheDir ?? path.join(os.homedir(), ".mcpx", definition.name);
-    await ensureDirectory(tokenDir);
+  const body = (await response.json()) as Record<string, unknown>;
+  const clientId = stringField(body.client_id);
+  if (!clientId) {
+    throw new Error("OAuth dynamic client registration response did not include client_id.");
+  }
+  return { clientId };
+}
 
-    const server = http.createServer();
-    const overrideRedirect = definition.oauthRedirectUrl
-      ? new URL(definition.oauthRedirectUrl)
-      : null;
-    const listenHost = overrideRedirect?.hostname ?? CALLBACK_HOST;
-    const desiredPort = overrideRedirect?.port
-      ? Number.parseInt(overrideRedirect.port, 10)
-      : undefined;
-    const callbackPath =
-      overrideRedirect?.pathname && overrideRedirect.pathname !== "/"
-        ? overrideRedirect.pathname
-        : CALLBACK_PATH;
-    const port = await new Promise<number>((resolve, reject) => {
-      server.listen(desiredPort ?? 0, listenHost, () => {
-        const address = server.address();
-        if (typeof address === "object" && address && "port" in address) {
-          resolve(address.port);
-        } else {
-          reject(new Error("Failed to determine callback port"));
-        }
-      });
-      server.once("error", (error) => reject(error));
-    });
+export function chooseOAuthScope(
+  resourceScopes: string[] | undefined,
+  serverScopes: string[] | undefined,
+): string {
+  const supported = new Set(serverScopes ?? []);
+  const scopes = (resourceScopes ?? []).filter((scope) => {
+    return supported.size === 0 || supported.has(scope);
+  });
+  return scopes.join(" ");
+}
 
-    const redirectUrl = overrideRedirect
-      ? new URL(overrideRedirect.toString())
-      : new URL(`http://${listenHost}:${port}${callbackPath}`);
-    if (!overrideRedirect || overrideRedirect.port === "") {
-      redirectUrl.port = String(port);
-    }
-    if (
-      !overrideRedirect ||
-      overrideRedirect.pathname === "/" ||
-      overrideRedirect.pathname === ""
-    ) {
-      redirectUrl.pathname = callbackPath;
-    }
+function buildAuthorizationUrl(options: {
+  metadata: OAuthServerMetadata;
+  clientId: string;
+  redirectUri: string;
+  resourceUrl: string;
+  scope: string;
+  state: string;
+  challenge: string;
+}): string {
+  const url = new URL(options.metadata.authorizationEndpoint);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("client_id", options.clientId);
+  url.searchParams.set("redirect_uri", options.redirectUri);
+  url.searchParams.set("code_challenge", options.challenge);
+  url.searchParams.set("code_challenge_method", "S256");
+  url.searchParams.set("state", options.state);
+  url.searchParams.set("resource", options.resourceUrl);
+  if (options.scope) url.searchParams.set("scope", options.scope);
+  return url.toString();
+}
 
-    const provider = new FileOAuthClientProvider(definition, tokenDir, redirectUrl, logger);
-    provider.attachServer(server);
-    return {
-      provider,
-      close: async () => {
-        await provider.close();
-      },
-    };
+async function exchangeAuthorizationCode(options: {
+  metadata: OAuthServerMetadata;
+  clientId: string;
+  redirectUri: string;
+  resourceUrl: string;
+  code: string;
+  verifier: string;
+}): Promise<OAuthToken> {
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    client_id: options.clientId,
+    redirect_uri: options.redirectUri,
+    code: options.code,
+    code_verifier: options.verifier,
+    resource: options.resourceUrl,
+  });
+
+  const response = await fetch(options.metadata.tokenEndpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+    },
+    body,
+  });
+
+  if (!response.ok) {
+    throw new Error(`OAuth token exchange failed: ${await response.text()}`);
   }
 
-  // attachServer listens for the OAuth redirect and resolves/rejects the deferred code promise.
-  private attachServer(server: http.Server) {
-    this.server = server;
-    server.on("request", async (req, res) => {
-      try {
-        const url = req.url ?? "";
-        if (!url.startsWith("/callback")) {
-          res.statusCode = 404;
-          res.end("Not found");
-          return;
-        }
-        const parsed = new URL(url, this.redirectUrlValue);
-        const code = parsed.searchParams.get("code");
-        const error = parsed.searchParams.get("error");
-        if (code) {
-          this.logger.info(`Received OAuth authorization code for ${this.definition.name}`);
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "text/html");
-          res.end(
-            "<html><body><h1>Authorization successful</h1><p>You can return to the CLI.</p></body></html>",
-          );
-          this.cachedAuthorizationCode = code;
-          this.authorizationDeferred?.resolve(code);
-          this.authorizationDeferred = null;
-        } else if (error) {
-          res.statusCode = 400;
-          res.setHeader("Content-Type", "text/html");
-          res.end(`<html><body><h1>Authorization failed</h1><p>${error}</p></body></html>`);
-          this.authorizationDeferred?.reject(new Error(`OAuth error: ${error}`));
-          this.authorizationDeferred = null;
-        } else {
-          res.statusCode = 400;
-          res.end("Missing authorization code");
-          this.authorizationDeferred?.reject(new Error("Missing authorization code"));
-          this.authorizationDeferred = null;
-        }
-      } catch (error) {
-        this.authorizationDeferred?.reject(error);
-        this.authorizationDeferred = null;
+  const payload = (await response.json()) as Record<string, unknown>;
+  const accessToken = stringField(payload.access_token);
+  const tokenType = stringField(payload.token_type) ?? "Bearer";
+  if (!accessToken) {
+    throw new Error("OAuth token response did not include access_token.");
+  }
+
+  const token: OAuthToken = {
+    accessToken,
+    tokenType,
+  };
+  const refreshToken = stringField(payload.refresh_token);
+  if (refreshToken) token.refreshToken = refreshToken;
+  const scope = stringField(payload.scope);
+  if (scope) token.scope = scope;
+  const expiresIn = numberField(payload.expires_in);
+  if (expiresIn !== undefined) {
+    token.expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+  }
+  return token;
+}
+
+function waitForOAuthCallback(expectedState: string): OAuthCallbackServer {
+  let server: Bun.Server<undefined> | undefined;
+  const result = new Promise<OAuthCallbackResult>((finish, fail) => {
+    const complete = (outcome: "finish" | "fail", value: OAuthCallbackResult | Error) => {
+      clearTimeout(timer);
+      server?.stop();
+      if (outcome === "finish") {
+        finish(value as OAuthCallbackResult);
+        return;
       }
-    });
-  }
+      fail(value);
+    };
 
-  get redirectUrl(): string | URL {
-    return this.redirectUrlValue;
-  }
+    const timer = setTimeout(() => {
+      complete("fail", new Error("OAuth authentication timed out."));
+    }, CALLBACK_TIMEOUT_MS);
 
-  get clientMetadata(): OAuthClientMetadata {
-    return this.metadata;
-  }
-
-  async state(): Promise<string> {
-    return this.stateValue;
-  }
-
-  async clientInformation(): Promise<OAuthClientInformationMixed | undefined> {
-    return readJsonFile<OAuthClientInformationMixed>(this.clientInfoPath);
-  }
-
-  async saveClientInformation(clientInformation: OAuthClientInformationMixed): Promise<void> {
-    await writeJsonFile(this.clientInfoPath, clientInformation);
-  }
-
-  async tokens(): Promise<OAuthTokens | undefined> {
-    return readJsonFile<OAuthTokens>(this.tokenPath);
-  }
-
-  async saveTokens(tokens: OAuthTokens): Promise<void> {
-    await writeJsonFile(this.tokenPath, tokens);
-    this.logger.info(`Saved OAuth tokens for ${this.definition.name} to ${this.tokenPath}`);
-  }
-
-  async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
-    this.logger.info(`Authorization required for ${this.definition.name}. Opening browser...`);
-    this.authorizationDeferred = createDeferred<string>();
-    openExternal(authorizationUrl.toString());
-    this.logger.info(`If the browser did not open, visit ${authorizationUrl.toString()} manually.`);
-  }
-
-  async saveCodeVerifier(codeVerifier: string): Promise<void> {
-    this.codeVerifierValue = codeVerifier;
-  }
-
-  async codeVerifier(): Promise<string> {
-    return this.codeVerifierValue;
-  }
-
-  // invalidateCredentials removes cached files to force the next OAuth flow.
-  async invalidateCredentials(scope: "all" | "client" | "tokens" | "verifier"): Promise<void> {
-    const removals: string[] = [];
-    if (scope === "all" || scope === "tokens") {
-      removals.push(this.tokenPath);
-    }
-    if (scope === "all" || scope === "client") {
-      removals.push(this.clientInfoPath);
-    }
-    // verifier is in-memory only, no file to remove
-    await Promise.all(
-      removals.map(async (file) => {
-        try {
-          await fs.unlink(file);
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-            throw error;
+    server = Bun.serve({
+      hostname: LOCALHOST,
+      port: 0,
+      routes: {
+        [CALLBACK_PATH]: (request) => {
+          const requestUrl = new URL(request.url);
+          const code = requestUrl.searchParams.get("code");
+          const state = requestUrl.searchParams.get("state");
+          const error = requestUrl.searchParams.get("error");
+          if (error) {
+            complete("fail", new Error(`OAuth authorization failed: ${error}`));
+            return new Response(`OAuth failed: ${error}`, { status: 400 });
           }
-        }
-      }),
-    );
-  }
+          if (!code || state !== expectedState) {
+            complete("fail", new Error("Invalid OAuth callback."));
+            return new Response("Invalid OAuth callback.", { status: 400 });
+          }
 
-  // waitForAuthorizationCode resolves once the local callback server captures a redirect.
-  // Multiple calls within the same OAuth session will return the same cached code.
-  async waitForAuthorizationCode(): Promise<string> {
-    if (this.cachedAuthorizationCode) {
-      return this.cachedAuthorizationCode;
-    }
-    if (!this.authorizationDeferred) {
-      this.authorizationDeferred = createDeferred<string>();
-    }
-    return this.authorizationDeferred.promise;
-  }
-
-  // markAuthFinished marks the OAuth flow as complete (finishAuth was called).
-  markAuthFinished(): void {
-    this.authFinishedFlag = true;
-  }
-
-  // hasFinishedAuth returns true if finishAuth has already been called for this session.
-  hasFinishedAuth(): boolean {
-    return this.authFinishedFlag;
-  }
-
-  // close stops the temporary callback server created for the OAuth session.
-  async close(): Promise<void> {
-    if (this.authorizationDeferred) {
-      // If the CLI is tearing down mid-flow, reject the pending wait promise so runtime shutdown isn't blocked.
-      this.authorizationDeferred.reject(
-        new Error("OAuth session closed before receiving authorization code."),
-      );
-      this.authorizationDeferred = null;
-    }
-    this.cachedAuthorizationCode = null;
-    this.authFinishedFlag = false;
-    if (!this.server) {
-      return;
-    }
-    await new Promise<void>((resolve) => {
-      this.server?.close(() => resolve());
+          complete("finish", { code, state });
+          return new Response("MCPX authentication complete. You can close this tab.");
+        },
+      },
+      fetch() {
+        return new Response("Not found", { status: 404 });
+      },
     });
-    this.server = undefined;
+  });
+
+  if (!server) {
+    throw new Error("Failed to start local OAuth callback server.");
   }
-}
 
-export interface OAuthSession {
-  provider: OAuthClientProvider & {
-    waitForAuthorizationCode: () => Promise<string>;
-    markAuthFinished: () => void;
-    hasFinishedAuth: () => boolean;
-  };
-  waitForAuthorizationCode: () => Promise<string>;
-  markAuthFinished: () => void;
-  hasFinishedAuth: () => boolean;
-  close: () => Promise<void>;
-}
-
-// createOAuthSession spins up a file-backed OAuth provider and callback server for the target definition.
-export async function createOAuthSession(
-  definition: ServerDefinition,
-  logger: OAuthLogger,
-): Promise<OAuthSession> {
-  const { provider, close } = await FileOAuthClientProvider.create(definition, logger);
-  const waitForAuthorizationCode = () => provider.waitForAuthorizationCode();
-  const markAuthFinished = () => provider.markAuthFinished();
-  const hasFinishedAuth = () => provider.hasFinishedAuth();
   return {
-    provider,
-    waitForAuthorizationCode,
-    markAuthFinished,
-    hasFinishedAuth,
-    close,
+    redirectUri: `http://${LOCALHOST}:${server.port}${CALLBACK_PATH}`,
+    result,
+    close: () => server?.stop(),
   };
 }
-export interface OAuthLogger {
-  info(message: string): void;
-  warn(message: string): void;
-  error(message: string, error?: unknown): void;
+
+function openBrowser(url: string): void {
+  const command =
+    process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
+  const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
+  Bun.spawn([command, ...args], {
+    stdout: "ignore",
+    stderr: "ignore",
+  });
+}
+
+function base64Url(input: Buffer): string {
+  return input.toString("base64url");
+}
+
+function stringField(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function numberField(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function stringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const values = value.filter((entry): entry is string => typeof entry === "string");
+  return values.length > 0 ? values : undefined;
 }

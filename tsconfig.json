@@ -1,20 +1,15 @@
 {
-	"compilerOptions": {
-		"module": "ESNext",
-		"moduleResolution": "Bundler",
-		"target": "ESNext",
-		"lib": ["ESNext", "DOM"],
-		"verbatimModuleSyntax": true,
-		"allowImportingTsExtensions": false,
-		"strict": true,
-		"noUncheckedIndexedAccess": true,
-		"resolveJsonModule": true,
-		"skipLibCheck": true,
-		"noEmit": true,
-		"paths": {
-			"@/*": ["./src/*"]
-		},
-		"types": ["@types/node", "bun", "vitest/globals"]
-	},
-	"include": ["src", "tests"]
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "skipLibCheck": true,
+    "types": ["bun"],
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"]
 }

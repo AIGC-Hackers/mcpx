@@ -1,118 +1,92 @@
 import fs from "node:fs/promises";
-import os from "node:os";
+import { homedir } from "node:os";
 import path from "node:path";
-import { parse } from "valibot";
-import { normalizeServerEntry } from "@/config-normalize.js";
-import {
-  type LoadConfigOptions,
-  type RawConfig,
-  RawConfigSchema,
-  type RawEntry,
-  RawEntrySchema,
-  type ServerDefinition,
-  type ServerSource,
-} from "@/config-schema.js";
-import { migrateLegacyConfigs } from "@/config-migration.js";
 
-export { toFileUrl } from "@/config-imports.js";
-export { __configInternals } from "@/config-normalize.js";
-export type {
-  CommandSpec,
-  HttpCommand,
-  LoadConfigOptions,
-  ServerDefinition,
-  ServerSource,
-  StdioCommand,
-} from "@/config-schema.js";
+import { assignCommandNames } from "./names";
+import type { RegistryConfig, ServerConfig } from "./types";
 
-export async function loadServerDefinitions(
-  options: LoadConfigOptions = {},
-): Promise<ServerDefinition[]> {
-  const rootDir = options.rootDir ?? process.cwd();
-  const targets = resolveConfigTargets(options.configPath, rootDir);
+const CONFIG_PATH = path.join(".agents", "mcpx", "servers.json");
 
-  if (!options.configPath && !(await hasExistingConfig(targets))) {
-    await migrateLegacyConfigs({ rootDir });
-  }
-
-  const merged = new Map<string, { raw: RawEntry; baseDir: string; source: ServerSource }>();
-
-  for (const target of targets) {
-    const config = await readConfigFile(target.path, target.optional);
-    if (!config) {
-      continue;
-    }
-    for (const [name, entryRaw] of Object.entries(config.mcpServers)) {
-      if (target.skipIfExists && merged.has(name)) {
-        continue;
-      }
-      const parsedEntry = parse(RawEntrySchema, entryRaw);
-      merged.set(name, {
-        raw: parsedEntry,
-        baseDir: path.dirname(target.path),
-        source: { kind: "local", path: target.path },
-      });
-    }
-  }
-
-  const servers: ServerDefinition[] = [];
-  for (const [name, { raw, baseDir: entryBaseDir, source }] of merged) {
-    servers.push(normalizeServerEntry(name, raw, entryBaseDir, source));
-  }
-
-  return servers;
+export function getRegistryConfigPath(): string {
+  return path.join(homedir(), CONFIG_PATH);
 }
 
-interface ConfigTarget {
-  readonly path: string;
-  readonly optional: boolean;
-  readonly skipIfExists: boolean;
-}
-
-function resolveConfigTargets(configPath: string | undefined, rootDir: string): ConfigTarget[] {
-  if (configPath) {
-    return [{ path: path.resolve(configPath), optional: false, skipIfExists: false }];
-  }
-  const projectPath = path.resolve(rootDir, "mcp.json");
-  const homePath = path.join(os.homedir(), ".mcpx", "mcp.json");
-  return [
-    { path: projectPath, optional: true, skipIfExists: false },
-    { path: homePath, optional: true, skipIfExists: true },
-  ];
-}
-
-async function hasExistingConfig(targets: ConfigTarget[]): Promise<boolean> {
-  for (const target of targets) {
-    if (await fileExists(target.path)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-async function readConfigFile(configPath: string, optional: boolean): Promise<RawConfig | null> {
+export async function readRegistryConfig(): Promise<RegistryConfig> {
+  const filePath = getRegistryConfigPath();
   try {
-    const buffer = await fs.readFile(configPath, "utf8");
-    return parse(RawConfigSchema, JSON.parse(buffer));
+    const raw = await fs.readFile(filePath, "utf8");
+    const parsed = JSON.parse(raw) as RegistryConfig;
+    if (parsed.version !== 1 || !parsed.servers || typeof parsed.servers !== "object") {
+      throw new Error(`Invalid mcpx registry config at ${filePath}.`);
+    }
+    return normalizeRegistryConfig(parsed);
   } catch (error) {
-    if (optional && isErrno(error, "ENOENT")) {
-      return null;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { version: 1, servers: {} };
     }
     throw error;
   }
 }
 
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
+export async function writeRegistryConfig(config: RegistryConfig): Promise<void> {
+  const filePath = getRegistryConfigPath();
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 }
 
-function isErrno(error: unknown, code: string): error is NodeJS.ErrnoException {
-  return Boolean(
-    error && typeof error === "object" && (error as NodeJS.ErrnoException).code === code,
-  );
+export async function upsertServerConfig(
+  name: string,
+  server: ServerConfig,
+): Promise<RegistryConfig> {
+  const config = await readRegistryConfig();
+  config.servers[name] = server;
+  await writeRegistryConfig(config);
+  return config;
+}
+
+export async function removeServerConfig(name: string): Promise<ServerConfig | undefined> {
+  const config = await readRegistryConfig();
+  const removed = removeServerFromConfig(config, name);
+  if (removed) {
+    await writeRegistryConfig(config);
+  }
+  return removed;
+}
+
+export function removeServerFromConfig(
+  config: RegistryConfig,
+  name: string,
+): ServerConfig | undefined {
+  const removed = config.servers[name];
+  if (!removed) return undefined;
+  delete config.servers[name];
+  return removed;
+}
+
+export function normalizeRegistryConfig(config: RegistryConfig): RegistryConfig {
+  const servers: Record<string, ServerConfig> = {};
+
+  for (const [name, server] of Object.entries(config.servers)) {
+    servers[name] = normalizeServerConfig(server);
+  }
+
+  return {
+    version: config.version,
+    servers,
+  };
+}
+
+function normalizeServerConfig(server: ServerConfig): ServerConfig {
+  if (!server.tools || server.tools.length === 0) return server;
+
+  const commandNames = assignCommandNames(server.tools.map((tool) => tool.name));
+  return {
+    ...server,
+    tools: server.tools.map((tool) => {
+      return {
+        ...tool,
+        commandName: commandNames.get(tool.name) ?? tool.name,
+      };
+    }),
+  };
 }
