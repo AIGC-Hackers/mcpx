@@ -72,8 +72,8 @@ mcpx <server> <tool> --input '<json-or-json5>'
 Examples:
 
 ```bash
-mcpx posthog projects-get --input '{}'
-mcpx sentry whoami --input '{}'
+mcpx posthog projects-get
+mcpx sentry whoami
 mcpx cf-graphql graphql_query --input '{ query: "query { viewer { accounts { name } } }" }'
 ```
 
@@ -150,7 +150,7 @@ mcpx optimizes output for humans and agents by default:
 Use `--raw` to preserve raw server text output:
 
 ```bash
-mcpx posthog projects-get --raw --input '{}'
+mcpx posthog projects-get --raw
 ```
 
 ## Project Skills
