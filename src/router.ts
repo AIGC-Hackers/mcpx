@@ -58,10 +58,9 @@ export async function runMcpx(argv: string[], cwd: string): Promise<void> {
     context: (globals) => {
       return { output: globals.raw ? "raw" : "toon" };
     },
-    schemaMaxLines: 240,
     schemaExplorer: createDefaultSchemaExplorer({
       selectionDepth: 2,
-      maxLines: 240,
+      maxLines: 1000,
     }),
   });
 
