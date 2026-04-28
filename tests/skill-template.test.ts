@@ -22,5 +22,7 @@ describe("mcpx skill template", () => {
     expect(content).toContain("`.server.{tool-a,tool-b,tool-c}`");
     expect(content).toContain("mcpx --schema=.posthog.{projects-get,alerts-list,alert-create}");
     expect(content).toContain("mcpx <server> <tool> --input '{ }'");
+    expect(content).toContain("mcpx <server> <tool> --input @payload.json");
+    expect(content).toContain("mcpx <server> <tool> --input @- <<'JSON'");
   });
 });

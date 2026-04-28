@@ -54,10 +54,22 @@ calling a tool.
 ## Call
 
 Call MCP tools through root server commands and pass tool input only through \`--input\`.
-\`--input\` accepts JSON, JSON5, stdin, and \`@file\` values through argc.
+\`--input\` accepts inline JSON/JSON5, \`@file\`, and \`@-\` stdin values through argc.
 
 \`\`\`bash
 mcpx <server> <tool> --input '{ }'
+\`\`\`
+
+For larger payloads, prefer file or heredoc input:
+
+\`\`\`bash
+mcpx <server> <tool> --input @payload.json
+
+mcpx <server> <tool> --input @- <<'JSON'
+{
+  "example": true
+}
+JSON
 \`\`\`
 
 Do not hand-edit MCP configuration in this project. Servers are registered in the user's global mcpx registry.

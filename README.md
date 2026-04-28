@@ -72,14 +72,14 @@ mcpx <server> <tool> --input '<json-or-json5>'
 Examples:
 
 ```bash
-mcpx posthog projects-get
-mcpx sentry whoami
+mcpx posthog projects-get --input '{}'
+mcpx sentry whoami --input '{}'
 ```
 
-For complex payloads, use a heredoc to keep the input readable:
+For complex payloads, use `@-` with a heredoc to keep the input readable:
 
 ```bash
-mcpx cf-graphql graphql_query --input "$(cat <<'EOF'
+mcpx cf-graphql graphql_query --input @- <<'JSON'
 {
   "query": "query GetWorkerAnalytics($accountTag: String!, $scriptName: String!, $since: Time!, $until: Time!) { viewer { accounts(filter: {accountTag: $accountTag}) { workersInvocationsAdaptive(limit: 1000, filter: {scriptName: $scriptName, datetime_geq: $since, datetime_leq: $until}, orderBy: [datetimeHour_ASC]) { dimensions { datetimeHour scriptName status } sum { requests subrequests errors duration } quantiles { cpuTimeP50 cpuTimeP99 } } } } }",
   "operationName": "GetWorkerAnalytics",
@@ -90,12 +90,11 @@ mcpx cf-graphql graphql_query --input "$(cat <<'EOF'
     "until": "2026-04-27T00:00:00Z"
   }
 }
-EOF
-)"
+JSON
 ```
 
-`--input` is the primary input path. It accepts argc input values, including JSON,
-JSON5, stdin, and `@file` inputs.
+`--input` is the primary input path. It accepts inline JSON/JSON5, `@file`, and
+`@-` stdin inputs.
 
 ## Discover Schemas
 
