@@ -83,8 +83,11 @@ function normalizeServerConfig(server: ServerConfig): ServerConfig {
   return {
     ...server,
     tools: server.tools.map((tool) => {
+      const { outputSchema: _outputSchema, ...rest } = tool as typeof tool & {
+        outputSchema?: unknown;
+      };
       return {
-        ...tool,
+        ...rest,
         commandName: commandNames.get(tool.name) ?? tool.name,
       };
     }),

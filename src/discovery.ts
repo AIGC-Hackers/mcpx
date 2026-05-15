@@ -87,9 +87,11 @@ export function normalizeTools(tools: McpTool[]): ToolDefinition[] {
       name: tool.name,
       commandName: commandNames.get(tool.name) ?? tool.name,
     };
+    if (tool.title) normalized.title = tool.title;
     if (tool.description) normalized.description = tool.description;
     if (isJsonSchema(tool.inputSchema)) normalized.inputSchema = tool.inputSchema;
-    if (isJsonSchema(tool.outputSchema)) normalized.outputSchema = tool.outputSchema;
+    if (tool.annotations) normalized.annotations = tool.annotations;
+    if (tool._meta) normalized._meta = tool._meta;
     return normalized;
   });
 }

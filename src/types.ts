@@ -40,9 +40,11 @@ export type TokenCache = {
 export type ToolDefinition = {
   name: string;
   commandName: string;
+  title?: string;
   description?: string;
   inputSchema?: JsonSchema;
-  outputSchema?: JsonSchema;
+  annotations?: ToolAnnotations;
+  _meta?: Record<string, unknown>;
 };
 
 export type ServerConfig = {
@@ -68,7 +70,17 @@ export type DiscoveryResult = {
 
 export type McpTool = {
   name: string;
+  title?: string;
   description?: string;
   inputSchema?: unknown;
-  outputSchema?: unknown;
+  annotations?: ToolAnnotations;
+  _meta?: Record<string, unknown>;
+};
+
+export type ToolAnnotations = {
+  title?: string;
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+  openWorldHint?: boolean;
 };

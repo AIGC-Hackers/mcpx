@@ -114,7 +114,7 @@ function buildServerRouter(service: ProjectService): Record<string, Router> {
     for (const tool of tools) {
       children[tool.commandName] = c
         .meta({
-          description: tool.description ?? `Call ${serverName}.${tool.name}`,
+          description: describeTool(tool, serverName),
         })
         .input(jsonSchemaToStandardSchema(tool.inputSchema));
     }
@@ -125,6 +125,48 @@ function buildServerRouter(service: ProjectService): Record<string, Router> {
 
 function describeServerTools(count: number): string {
   return `(${count} ${count === 1 ? "tool" : "tools"})`;
+}
+
+function describeTool(
+  tool: {
+    name: string;
+    title?: string;
+    description?: string;
+    annotations?: {
+      readOnlyHint?: boolean;
+      destructiveHint?: boolean;
+      idempotentHint?: boolean;
+      openWorldHint?: boolean;
+    };
+  },
+  serverName: string,
+): string {
+  const parts: string[] = [];
+  if (tool.title) parts.push(tool.title);
+  parts.push(tool.description ?? `Call ${serverName}.${tool.name}`);
+
+  const hints = toolAnnotationHints(tool.annotations);
+  if (hints.length > 0) parts.push(`[${hints.join(", ")}]`);
+  return parts.join(" — ");
+}
+
+function toolAnnotationHints(
+  annotations:
+    | {
+        readOnlyHint?: boolean;
+        destructiveHint?: boolean;
+        idempotentHint?: boolean;
+        openWorldHint?: boolean;
+      }
+    | undefined,
+): string[] {
+  if (!annotations) return [];
+  const hints: string[] = [];
+  if (annotations.readOnlyHint) hints.push("read-only");
+  if (annotations.destructiveHint) hints.push("destructive");
+  if (annotations.idempotentHint) hints.push("idempotent");
+  if (annotations.openWorldHint === false) hints.push("closed-world");
+  return hints;
 }
 
 function buildHandlers(service: ProjectService, cwd: string): Record<string, unknown> {
@@ -216,5 +258,6 @@ export const __test = {
   buildRouter,
   buildHandlers,
   describeServerTools,
+  describeTool,
   normalizeArgv,
 };

@@ -26,6 +26,56 @@ describe("registry config", () => {
     );
   });
 
+  it("preserves cached MCP tool metadata", () => {
+    const config = {
+      version: 1,
+      servers: {
+        browser: {
+          url: "https://browser.example/mcp",
+          auth: { kind: "none" },
+          tools: [
+            {
+              name: "close_page",
+              commandName: "stale",
+              title: "Close Page",
+              annotations: { destructiveHint: true },
+              _meta: { source: "server" },
+            },
+          ],
+        },
+      },
+    } as unknown as RegistryConfig;
+
+    expect(normalizeRegistryConfig(config).servers.browser?.tools?.[0]).toMatchObject({
+      commandName: "close_page",
+      title: "Close Page",
+      annotations: { destructiveHint: true },
+      _meta: { source: "server" },
+    });
+  });
+
+  it("drops stale cached output schemas", () => {
+    const config = {
+      version: 1,
+      servers: {
+        browser: {
+          url: "https://browser.example/mcp",
+          auth: { kind: "none" },
+          tools: [
+            {
+              name: "list_pages",
+              outputSchema: { type: "object" },
+            },
+          ],
+        },
+      },
+    } as unknown as RegistryConfig;
+
+    expect(normalizeRegistryConfig(config).servers.browser?.tools?.[0]).not.toHaveProperty(
+      "outputSchema",
+    );
+  });
+
   it("removes a server from registry config", () => {
     const config = {
       version: 1,

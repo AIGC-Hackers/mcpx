@@ -15,12 +15,29 @@ type McpContent = Record<string, unknown> & {
   data?: unknown;
   blob?: unknown;
   mimeType?: unknown;
+  resource?: unknown;
+};
+
+type McpToolResult = {
+  content?: McpContent[];
+  structuredContent?: unknown;
+  isError?: unknown;
+  _meta?: unknown;
 };
 
 export async function printOutput(value: unknown, context: McpxContext): Promise<void> {
   if (isMcpToolResult(value)) {
-    for (const line of await formatMcpContent(value.content, context.output)) {
-      console.log(line);
+    const isError = value.isError === true;
+    const write = isError ? console.error : console.log;
+    if (isError) process.exitCode = 1;
+
+    if (value.structuredContent !== undefined && value.structuredContent !== null) {
+      write(formatStructuredContent(value, context.output));
+      return;
+    }
+
+    for (const line of await formatMcpContent(value.content ?? [], context.output)) {
+      write(line);
     }
     return;
   }
@@ -40,15 +57,31 @@ export async function formatMcpContent(
   const output: string[] = [];
 
   for (const item of content) {
-    if (item.type === "text" && typeof item.text === "string") {
-      output.push(formatTextContent(item.text, outputFormat));
-      continue;
+    switch (item.type) {
+      case "text":
+        if (typeof item.text === "string") output.push(formatTextContent(item.text, outputFormat));
+        break;
+      case "resource":
+        output.push(await formatEmbeddedResource(item.resource, outputFormat));
+        break;
+      case "resource_link":
+        output.push(formatResourceLink(item, outputFormat));
+        break;
+      default:
+        output.push(await saveBinaryContent(item));
     }
-
-    output.push(await saveBinaryContent(item));
   }
 
   return output;
+}
+
+function formatStructuredContent(result: McpToolResult, output: McpxContext["output"]): string {
+  const value =
+    output === "raw" && result._meta !== undefined
+      ? { structuredContent: result.structuredContent, _meta: result._meta }
+      : result.structuredContent;
+
+  return output === "raw" ? JSON.stringify(value, null, 2) : encode(value);
 }
 
 function formatTextContent(text: string, output: McpxContext["output"]): string {
@@ -96,6 +129,32 @@ async function saveBinaryContent(content: McpContent): Promise<string> {
   return `file saved ${filePath}`;
 }
 
+async function formatEmbeddedResource(
+  resource: unknown,
+  outputFormat: McpxContext["output"],
+): Promise<string> {
+  if (!isMcpContent(resource)) {
+    return formatTextContent(JSON.stringify(resource, null, 2), outputFormat);
+  }
+  if (typeof resource.text === "string") {
+    return formatTextContent(resource.text, outputFormat);
+  }
+  return saveBinaryContent(resource);
+}
+
+function formatResourceLink(content: McpContent, outputFormat: McpxContext["output"]): string {
+  const link = omitUndefined({
+    type: content.type,
+    uri: content.uri,
+    name: content.name,
+    title: content.title,
+    description: content.description,
+    mimeType: content.mimeType,
+    size: content.size,
+  });
+  return outputFormat === "raw" ? JSON.stringify(link, null, 2) : encode(link);
+}
+
 function contentBytes(content: McpContent): Buffer {
   if (typeof content.data === "string") {
     return Buffer.from(content.data, "base64");
@@ -137,8 +196,16 @@ function extensionForMimeType(mimeType: string | undefined): string {
   }
 }
 
-function isMcpToolResult(value: unknown): value is { content: McpContent[] } {
+function isMcpToolResult(value: unknown): value is McpToolResult {
   if (!value || typeof value !== "object") return false;
-  const content = (value as { content?: unknown }).content;
-  return Array.isArray(content);
+  const result = value as McpToolResult;
+  return Array.isArray(result.content) || "structuredContent" in result;
+}
+
+function isMcpContent(value: unknown): value is McpContent {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function omitUndefined(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
 }
