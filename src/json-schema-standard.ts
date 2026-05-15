@@ -15,7 +15,9 @@ export function jsonSchemaToStandardSchema(schema: unknown): StandardSchema {
       validate: (value: unknown) => validateObjectInput(value, inputSchema),
       jsonSchema: {
         input: () => inputSchema,
-        output: () => ({}),
+        // argc derives CLI parameter help from output schemas; MCP tool ingress
+        // and handler-facing input are the same contract here.
+        output: () => inputSchema,
       },
     },
   };

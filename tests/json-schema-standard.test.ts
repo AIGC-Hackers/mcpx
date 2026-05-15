@@ -14,6 +14,10 @@ describe("jsonSchemaToStandardSchema", () => {
       type: "object",
       required: ["query"],
     });
+    expect(schema["~standard"].jsonSchema.output({ target: "draft-07" })).toMatchObject({
+      type: "object",
+      required: ["query"],
+    });
   });
 
   it("checks required fields before delegating full validation to the MCP server", async () => {
