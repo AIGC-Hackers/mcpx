@@ -1,6 +1,6 @@
 import { cancel, isCancel, multiselect } from "@clack/prompts";
 
-import { writeMcpxSkill } from "./skill-template";
+import { readMcpxSkillServers, writeMcpxSkill } from "./skill-template";
 import type { ProjectService } from "./project-service";
 
 export type SkillCommandInput = {
@@ -21,17 +21,23 @@ export async function runSkillCommand(
 
   const selectedServers =
     input.servers === undefined
-      ? await promptForServers(availableServers)
+      ? await promptForServers(availableServers, await readMcpxSkillServers(cwd))
       : normalizeSelectedServers(input.servers, availableServers);
 
   const filePath = await writeMcpxSkill({ cwd, servers: selectedServers });
   console.log(`Wrote ${filePath}`);
 }
 
-async function promptForServers(availableServers: string[]): Promise<string[]> {
+async function promptForServers(
+  availableServers: string[],
+  selectedServers: string[],
+): Promise<string[]> {
+  const available = new Set(availableServers);
+  const initialValues = selectedServers.filter((server) => available.has(server));
   const result = await multiselect({
     message: "Select MCP servers for this project",
     options: availableServers.map((server) => ({ value: server, label: server })),
+    initialValues,
     required: true,
   });
 

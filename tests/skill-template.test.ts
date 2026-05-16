@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "bun:test";
 
-import { buildSchemaSelector, writeMcpxSkill } from "../src/skill-template";
+import { buildSchemaSelector, parseMcpxSkillServers, writeMcpxSkill } from "../src/skill-template";
 
 describe("mcpx skill template", () => {
   it("builds argc schema selectors for selected servers", () => {
@@ -18,11 +18,25 @@ describe("mcpx skill template", () => {
     const content = await readFile(filePath, "utf8");
 
     expect(filePath).toBe(join(cwd, ".agents", "skills", "mcpx", "SKILL.md"));
+    expect(content).toContain("servers: [posthog, sentry]");
     expect(content).toContain('mcpx --schema=".{posthog,sentry}"');
     expect(content).toContain("`.server.{tool-a,tool-b,tool-c}`");
     expect(content).toContain("mcpx --schema=.posthog.{projects-get,alerts-list,alert-create}");
     expect(content).toContain("mcpx <server> <tool> --input '{ }'");
     expect(content).toContain("mcpx <server> <tool> --input @payload.json");
     expect(content).toContain("mcpx <server> <tool> --input @- <<'JSON'");
+  });
+
+  it("parses selected servers from existing skill frontmatter", () => {
+    expect(
+      parseMcpxSkillServers(`---
+name: mcpx
+servers: [posthog, sentry]
+description: Example
+---
+
+# MCPX
+`),
+    ).toEqual(["posthog", "sentry"]);
   });
 });

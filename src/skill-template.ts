@@ -6,6 +6,10 @@ export type SkillTemplateInput = {
   servers: string[];
 };
 
+export function mcpxSkillPath(cwd: string): string {
+  return path.join(cwd, ".agents", "skills", "mcpx", "SKILL.md");
+}
+
 export function buildSchemaSelector(servers: string[]): string {
   if (servers.length === 0) {
     throw new Error("Select at least one MCP server.");
@@ -22,6 +26,7 @@ export function buildMcpxSkillMarkdown(servers: string[]): string {
 
   return `---
 name: mcpx
+servers: [${servers.join(", ")}]
 description: Use project-approved MCP tools through mcpx. Trigger when the user asks to inspect or operate services backed by these MCP servers: ${servers.join(", ")}.
 ---
 
@@ -77,8 +82,36 @@ Do not hand-edit MCP configuration in this project. Servers are registered in th
 }
 
 export async function writeMcpxSkill(input: SkillTemplateInput): Promise<string> {
-  const filePath = path.join(input.cwd, ".agents", "skills", "mcpx", "SKILL.md");
+  const filePath = mcpxSkillPath(input.cwd);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, buildMcpxSkillMarkdown(input.servers), "utf8");
   return filePath;
+}
+
+export async function readMcpxSkillServers(cwd: string): Promise<string[]> {
+  try {
+    return parseMcpxSkillServers(await fs.readFile(mcpxSkillPath(cwd), "utf8"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+export function parseMcpxSkillServers(content: string): string[] {
+  const frontmatter = /^---\n([\s\S]*?)\n---/.exec(content)?.[1];
+  if (!frontmatter) return [];
+
+  const line = frontmatter
+    .split("\n")
+    .map((entry) => entry.trim())
+    .find((entry) => entry.startsWith("servers:"));
+  if (!line) return [];
+
+  const match = /^servers:\s*\[(.*)\]\s*$/.exec(line);
+  if (!match) return [];
+
+  return match[1]!
+    .split(",")
+    .map((entry) => entry.trim().replace(/^["']|["']$/g, ""))
+    .filter(Boolean);
 }
