@@ -18,7 +18,11 @@ describe("mcpx skill template", () => {
     const content = await readFile(filePath, "utf8");
 
     expect(filePath).toBe(join(cwd, ".agents", "skills", "mcpx", "SKILL.md"));
-    expect(content).toContain("servers: [posthog, sentry]");
+    expect(content).toContain('name: "mcpx"');
+    expect(content).toContain('servers: ["posthog", "sentry"]');
+    expect(content).toContain(
+      'description: "Use project-approved MCP tools through mcpx. Trigger when the user asks to inspect or operate services backed by these MCP servers: posthog, sentry."',
+    );
     expect(content).toContain('mcpx --schema=".{posthog,sentry}"');
     expect(content).toContain("`.server.{tool-a,tool-b,tool-c}`");
     expect(content).toContain("mcpx --schema=.posthog.{projects-get,alerts-list,alert-create}");
@@ -38,5 +42,37 @@ description: Example
 # MCPX
 `),
     ).toEqual(["posthog", "sentry"]);
+    expect(
+      parseMcpxSkillServers(`---
+name: "mcpx"
+servers:
+  - posthog
+  - sentry
+description: "Example: valid YAML"
+---
+
+# MCPX
+`),
+    ).toEqual(["posthog", "sentry"]);
+    expect(
+      parseMcpxSkillServers(`---
+name: "mcpx"
+servers: ["posthog", 1, "", "sentry"]
+description: "Example: mixed YAML"
+---
+
+# MCPX
+`),
+    ).toEqual(["posthog", "sentry"]);
+    expect(
+      parseMcpxSkillServers(`---
+name: mcpx
+servers: [posthog]
+description: Invalid YAML: because this unquoted scalar contains a mapping
+---
+
+# MCPX
+`),
+    ).toEqual([]);
   });
 });

@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { YAML } from "bun";
+
 export type SkillTemplateInput = {
   cwd: string;
   servers: string[];
@@ -23,11 +25,12 @@ export function buildSchemaSelector(servers: string[]): string {
 export function buildMcpxSkillMarkdown(servers: string[]): string {
   const selector = buildSchemaSelector(servers);
   const serverList = servers.map((server) => `- ${server}`).join("\n");
+  const description = `Use project-approved MCP tools through mcpx. Trigger when the user asks to inspect or operate services backed by these MCP servers: ${servers.join(", ")}.`;
 
   return `---
-name: mcpx
-servers: [${servers.join(", ")}]
-description: Use project-approved MCP tools through mcpx. Trigger when the user asks to inspect or operate services backed by these MCP servers: ${servers.join(", ")}.
+name: ${JSON.stringify("mcpx")}
+servers: [${servers.map((server) => JSON.stringify(server)).join(", ")}]
+description: ${JSON.stringify(description)}
 ---
 
 # MCPX
@@ -98,20 +101,31 @@ export async function readMcpxSkillServers(cwd: string): Promise<string[]> {
 }
 
 export function parseMcpxSkillServers(content: string): string[] {
-  const frontmatter = /^---\n([\s\S]*?)\n---/.exec(content)?.[1];
+  const frontmatter = extractFrontmatter(content);
   if (!frontmatter) return [];
 
-  const line = frontmatter
-    .split("\n")
-    .map((entry) => entry.trim())
-    .find((entry) => entry.startsWith("servers:"));
-  if (!line) return [];
+  try {
+    const parsed = YAML.parse(frontmatter) as unknown;
+    if (!isRecord(parsed) || !Array.isArray(parsed.servers)) return [];
 
-  const match = /^servers:\s*\[(.*)\]\s*$/.exec(line);
-  if (!match) return [];
+    return parsed.servers.filter(
+      (server): server is string => typeof server === "string" && server.length > 0,
+    );
+  } catch {
+    return [];
+  }
+}
 
-  return match[1]!
-    .split(",")
-    .map((entry) => entry.trim().replace(/^["']|["']$/g, ""))
-    .filter(Boolean);
+function extractFrontmatter(content: string): string | undefined {
+  const lines = content.replaceAll("\r\n", "\n").replaceAll("\r", "\n").split("\n");
+  if (lines[0] !== "---") return undefined;
+
+  const closingIndex = lines.findIndex((line, index) => index > 0 && line === "---");
+  if (closingIndex === -1) return undefined;
+
+  return lines.slice(1, closingIndex).join("\n");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
