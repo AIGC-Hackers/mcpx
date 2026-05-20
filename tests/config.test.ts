@@ -87,7 +87,11 @@ describe("registry config", () => {
       },
     } as RegistryConfig;
 
-    expect(removeServerFromConfig(config, "posthog")?.url).toBe("https://mcp.posthog.com/mcp");
+    const removed = removeServerFromConfig(config, "posthog");
+    expect(removed?.transport).not.toBe("stdio");
+    expect(removed && removed.transport !== "stdio" ? removed.url : undefined).toBe(
+      "https://mcp.posthog.com/mcp",
+    );
     expect(config.servers.posthog).toBeUndefined();
   });
 

@@ -184,6 +184,10 @@ async function ensureAuthReady(
   toolsBefore: number,
   interactiveAuth: boolean,
 ): Promise<AuthReadyResult> {
+  if (server.transport === "stdio") {
+    return { status: "ready", server, authStatus: "none" };
+  }
+
   if (server.auth.kind === "oauth") {
     if (!interactiveAuth) {
       const result: ServerRefreshResult = {
@@ -303,6 +307,16 @@ async function writeFailureResult(
 }
 
 function isSameRefreshTarget(left: ServerConfig, right: ServerConfig): boolean {
+  if (left.transport === "stdio" || right.transport === "stdio") {
+    return (
+      left.transport === "stdio" &&
+      right.transport === "stdio" &&
+      left.command === right.command &&
+      JSON.stringify(left.args ?? []) === JSON.stringify(right.args ?? []) &&
+      JSON.stringify(left.env ?? {}) === JSON.stringify(right.env ?? {})
+    );
+  }
+
   return (
     left.url === right.url &&
     JSON.stringify(left.headers ?? null) === JSON.stringify(right.headers ?? null) &&
@@ -378,6 +392,7 @@ export function buildRefreshSummary(results: ServerRefreshResult[]): RefreshSumm
 }
 
 async function readOAuthToken(server: ServerConfig): Promise<OAuthToken | undefined> {
+  if (server.transport === "stdio") return undefined;
   if (server.auth.kind !== "oauth-token") return undefined;
   return getOAuthToken(server.auth.tokenKey);
 }

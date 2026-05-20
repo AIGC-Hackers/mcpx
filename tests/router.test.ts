@@ -37,4 +37,35 @@ describe("router", () => {
       ),
     ).toBe("Close Page — Close a browser page — [destructive, idempotent]");
   });
+
+  it("builds stdio discovery options from @add input", () => {
+    expect(
+      __test.addDiscoverOptions("open-design", {
+        name: "open-design",
+        transport: "stdio",
+        command: "node",
+        arg: ["/path/to/cli.js", "mcp"],
+        env: { OPEN_DESIGN_TOKEN: "test" },
+      }),
+    ).toEqual({
+      name: "open-design",
+      transport: "stdio",
+      command: "node",
+      args: ["/path/to/cli.js", "mcp"],
+      env: { OPEN_DESIGN_TOKEN: "test" },
+    });
+  });
+
+  it("keeps @add HTTP as the default transport", () => {
+    expect(
+      __test.addDiscoverOptions("posthog", {
+        name: "posthog",
+        url: "https://mcp.posthog.com/mcp",
+      }),
+    ).toEqual({
+      name: "posthog",
+      transport: "http",
+      url: "https://mcp.posthog.com/mcp",
+    });
+  });
 });

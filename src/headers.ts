@@ -1,8 +1,8 @@
-import type { AuthDiscovery, ServerConfig } from "./types";
+import type { AuthDiscovery, HttpServerConfig } from "./types";
 import { refreshOAuthToken, shouldRefreshOAuthToken } from "./oauth";
 import { getOAuthTokenForUpdate, putOAuthTokenInCache } from "./token-cache";
 
-export function resolveProbeHeaders(server: ServerConfig): Record<string, string> {
+export function resolveProbeHeaders(server: HttpServerConfig): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: "application/json, text/event-stream",
     ...(server.headers ?? {}),
@@ -18,7 +18,7 @@ export function resolveProbeHeaders(server: ServerConfig): Record<string, string
   return headers;
 }
 
-export async function resolveHeaders(server: ServerConfig): Promise<Record<string, string>> {
+export async function resolveHeaders(server: HttpServerConfig): Promise<Record<string, string>> {
   const headers = resolveProbeHeaders(server);
 
   if (server.auth.kind === "oauth-token") {
@@ -31,7 +31,7 @@ export async function resolveHeaders(server: ServerConfig): Promise<Record<strin
   return headers;
 }
 
-async function resolveOAuthToken(server: ServerConfig) {
+async function resolveOAuthToken(server: HttpServerConfig) {
   if (server.auth.kind !== "oauth-token") return undefined;
 
   const { cache, token } = await getOAuthTokenForUpdate(server.auth.tokenKey);

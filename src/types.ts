@@ -47,7 +47,8 @@ export type ToolDefinition = {
   _meta?: Record<string, unknown>;
 };
 
-export type ServerConfig = {
+export type HttpServerConfig = {
+  transport?: "http";
   url: string;
   headers?: Record<string, string>;
   auth: AuthDiscovery;
@@ -55,6 +56,18 @@ export type ServerConfig = {
   tools?: ToolDefinition[];
   refreshStatus?: ServerRefreshStatus;
 };
+
+export type StdioServerConfig = {
+  transport: "stdio";
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  discoveredAt?: string;
+  tools?: ToolDefinition[];
+  refreshStatus?: ServerRefreshStatus;
+};
+
+export type ServerConfig = HttpServerConfig | StdioServerConfig;
 
 export type ServerRefreshStatus = {
   checkedAt: string;

@@ -1,11 +1,11 @@
 ---
 name: mcpx
-description: Use when the user needs to discover or call already-configured remote MCP servers through the mcpx CLI, including generating project-local MCP routing skills.
+description: Use when the user needs to discover or call already-configured MCP servers through the mcpx CLI, including generating project-local MCP routing skills.
 ---
 
 # mcpx
 
-`mcpx` turns registered remote MCP servers into an agent-friendly command surface.
+`mcpx` turns registered MCP servers into an agent-friendly command surface.
 Use it when a task needs MCP-backed services such as PostHog, Sentry, Cloudflare,
 or another server registered in the user's global mcpx registry.
 
@@ -14,7 +14,7 @@ or another server registered in the user's global mcpx registry.
 - Run `mcpx` directly.
 - Start with the server inventory instead of dumping every registered schema.
 - Call MCP tools as `mcpx <server> <tool> --input <json>`.
-- Pass all tool arguments through `--input`; do not invent flags for remote MCP tool fields.
+- Pass all tool arguments through `--input`; do not invent flags for MCP tool fields.
 - Use focused schema selectors before calling tools on large MCP surfaces.
 - Do not hand-edit `~/.agents/mcpx/servers.json` or token cache files unless the user explicitly asks for registry surgery.
 - Treat MCP server registration and OAuth setup as human-owned configuration. If a required server is missing or unauthenticated, stop and ask the user to configure it.

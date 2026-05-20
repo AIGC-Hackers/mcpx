@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import path from "node:path";
 
-import { listAllMcpTools, normalizeMcpTool } from "../src/mcp-client";
+import { callMcpTool, listAllMcpTools, listMcpTools, normalizeMcpTool } from "../src/mcp-client";
 
 describe("MCP client tool listing", () => {
   it("paginates listTools results", async () => {
@@ -37,6 +38,25 @@ describe("MCP client tool listing", () => {
       inputSchema: { type: "object" },
       annotations: { destructiveHint: true },
       _meta: { trace: true },
+    });
+  });
+
+  it("lists and calls tools from stdio MCP servers", async () => {
+    const server: { transport: "stdio"; command: string; args: string[] } = {
+      transport: "stdio",
+      command: process.execPath,
+      args: [path.join(import.meta.dir, "fixtures", "stdio-server.mjs")],
+    };
+
+    expect(await listMcpTools(server)).toMatchObject([
+      {
+        name: "echo",
+        title: "Echo",
+        description: "Echo a fixed response",
+      },
+    ]);
+    expect(await callMcpTool(server, "echo", {})).toMatchObject({
+      content: [{ type: "text", text: "ok" }],
     });
   });
 });

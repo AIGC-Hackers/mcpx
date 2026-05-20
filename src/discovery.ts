@@ -12,17 +12,30 @@ import type {
 } from "./types";
 
 export type DiscoverServerOptions = {
-  url: string;
   name: string;
-  bearerEnv?: string;
-  headers?: Record<string, string>;
-  interactiveAuth?: boolean;
-};
+} & (
+  | {
+      transport?: "http";
+      url: string;
+      bearerEnv?: string;
+      headers?: Record<string, string>;
+      interactiveAuth?: boolean;
+    }
+  | {
+      transport: "stdio";
+      command: string;
+      args?: string[];
+      env?: Record<string, string>;
+    }
+);
 
 export async function discoverServer(options: DiscoverServerOptions): Promise<DiscoveryResult> {
+  if (options.transport === "stdio") return discoverStdioServer(options);
+
   const url = new URL(options.url);
   const configuredAuth = authFromBearerEnv(options.bearerEnv);
   const seedServer: ServerConfig = {
+    transport: "http",
     url: url.toString(),
     auth: configuredAuth ?? { kind: "none" },
   };
@@ -70,6 +83,31 @@ export async function discoverServer(options: DiscoverServerOptions): Promise<Di
   }
 }
 
+async function discoverStdioServer(
+  options: DiscoverServerOptions & { transport: "stdio" },
+): Promise<DiscoveryResult> {
+  const seedServer: ServerConfig = {
+    transport: "stdio",
+    command: options.command,
+  };
+  if (options.args) seedServer.args = options.args;
+  if (options.env) seedServer.env = options.env;
+
+  const server: ServerConfig = {
+    ...seedServer,
+    discoveredAt: new Date().toISOString(),
+  };
+
+  try {
+    const tools = await listMcpTools(server);
+    server.tools = normalizeTools(tools);
+    return { server, status: "ready", message: `Discovered ${server.tools.length} tool(s).` };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { server, status: "unreachable", message };
+  }
+}
+
 export async function refreshServer(server: ServerConfig): Promise<ServerConfig> {
   const tools = await listMcpTools(server);
   return {
@@ -83,6 +121,10 @@ export async function reauthenticateServer(
   name: string,
   server: ServerConfig,
 ): Promise<ServerConfig> {
+  if (server.transport === "stdio") {
+    throw new Error(`Server "${name}" uses stdio and does not support OAuth re-authentication.`);
+  }
+
   const url = new URL(server.url);
   const discoveredAuth = await discoverAuth(
     url,

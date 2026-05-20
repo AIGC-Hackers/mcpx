@@ -1,6 +1,6 @@
 # mcpx
 
-mcpx is a command line tool that turns remote MCP servers into an
+mcpx is a command line tool that turns registered MCP servers into an
 agent-friendly command surface.
 
 It keeps MCP server registrations in a global user registry, discovers tool
@@ -36,7 +36,7 @@ Set `MCPX_INSTALL_DIR` to choose another install directory.
 
 ## Add MCP Servers
 
-Register a remote MCP server globally:
+Register MCP servers globally:
 
 ```bash
 mcpx @add --name posthog --url https://mcp.posthog.com/mcp
@@ -134,12 +134,27 @@ names:
 
 ```bash
 mcpx @add --name <server> --url <mcp-url>
+mcpx @add --name <server> --transport stdio --command <command> --arg <arg>
 mcpx @remove --name <server>
 mcpx @refresh
 mcpx @skill
 ```
 
 Server names cannot start with `@`.
+
+HTTP is the default transport. Stdio servers are local process registrations;
+pass each process argument with `--arg`, or use `--input` when you need structured
+`args` / `env`:
+
+```bash
+mcpx @add --input '{
+  "name": "open-design",
+  "transport": "stdio",
+  "command": "node",
+  "args": ["/path/to/open-design/apps/daemon/dist/cli.js", "mcp"],
+  "env": { "OPEN_DESIGN_TOKEN": "..." }
+}'
+```
 
 `@refresh` checks every registered MCP server, repairs OAuth state first,
 refreshes cached tool schemas after auth is ready, and reports servers that

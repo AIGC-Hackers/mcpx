@@ -26,6 +26,17 @@ type HandlerOptions<TInput extends Record<string, unknown>> = {
   context: McpxContext;
 };
 
+type AddServerInput = {
+  name: string;
+  transport?: "http" | "stdio";
+  url?: string;
+  bearerEnv?: string;
+  command?: string;
+  arg?: string | string[];
+  args?: string | string[];
+  env?: Record<string, string>;
+};
+
 const globalInput = s(
   v.object({
     raw: v.optional(v.boolean()),
@@ -35,8 +46,13 @@ const globalInput = s(
 const addInput = s(
   v.object({
     name: v.pipe(v.string(), v.description("Global server name")),
-    url: v.pipe(v.string(), v.url(), v.description("MCP Streamable HTTP endpoint URL")),
+    transport: v.optional(v.picklist(["http", "stdio"])),
+    url: v.optional(v.pipe(v.string(), v.url(), v.description("MCP Streamable HTTP endpoint URL"))),
     bearerEnv: v.optional(v.string()),
+    command: v.optional(v.pipe(v.string(), v.description("Stdio MCP server command"))),
+    arg: v.optional(v.union([v.string(), v.array(v.string())])),
+    args: v.optional(v.union([v.string(), v.array(v.string())])),
+    env: v.optional(v.record(v.string(), v.string())),
   }),
 );
 
@@ -102,6 +118,7 @@ function buildRouter(service: ProjectService): Router {
         description: "Add a global MCP server and discover its auth and tool schema.",
         examples: [
           "mcpx @add --name posthog --url https://mcp.posthog.com/mcp --bearer-env POSTHOG_AUTH_HEADER",
+          "mcpx @add --name open-design --transport stdio --command node --arg /path/to/open-design/apps/daemon/dist/cli.js --arg mcp",
         ],
       })
       .input(addInput),
@@ -211,22 +228,17 @@ function buildHandlers(service: ProjectService, cwd: string): Record<string, unk
     handlers[serverName] = serverHandlers;
   }
 
-  handlers["@add"] = async (
-    options: HandlerOptions<{ name: string; url: string; bearerEnv?: string }>,
-  ) => {
+  handlers["@add"] = async (options: HandlerOptions<AddServerInput>) => {
     const input = options.input;
     const name = assertServerName(input.name);
-    const discoverOptions: { url: string; bearerEnv?: string } = {
-      url: input.url,
-    };
-    if (input.bearerEnv) discoverOptions.bearerEnv = input.bearerEnv;
-    const result = await discoverServer({ ...discoverOptions, name });
+    const result = await discoverServer(addDiscoverOptions(name, input));
     await upsertServerConfig(name, result.server);
     await printOutput(
       {
         name,
+        transport: result.server.transport ?? "http",
         status: result.status,
-        auth: result.server.auth,
+        auth: result.server.transport === "stdio" ? undefined : result.server.auth,
         tools: result.server.tools?.length ?? 0,
         message: result.message,
       },
@@ -241,7 +253,9 @@ function buildHandlers(service: ProjectService, cwd: string): Record<string, unk
       throw new Error(`Unknown MCP server "${name}".`);
     }
     const tokenRemoved =
-      removed.auth.kind === "oauth-token" ? await removeOAuthToken(removed.auth.tokenKey) : false;
+      removed.transport !== "stdio" && removed.auth.kind === "oauth-token"
+        ? await removeOAuthToken(removed.auth.tokenKey)
+        : false;
     await printOutput(
       {
         name,
@@ -274,10 +288,50 @@ async function callToolWithReauthRetry(
     return await callMcpTool(server, toolName, input);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (!isReauthRequiredMessage(message)) throw error;
+    if (server.transport === "stdio" || !isReauthRequiredMessage(message)) throw error;
     const reauthenticated = await service.reauthenticateServer(serverName);
     return callMcpTool(reauthenticated, toolName, input);
   }
+}
+
+function addDiscoverOptions(name: string, input: AddServerInput) {
+  if (input.transport === "stdio" || input.command) {
+    if (!input.command) {
+      throw new Error('Stdio MCP servers require "--command".');
+    }
+    const options: {
+      name: string;
+      transport: "stdio";
+      command: string;
+      args?: string[];
+      env?: Record<string, string>;
+    } = {
+      name,
+      transport: "stdio" as const,
+      command: input.command,
+    };
+    const args = normalizeStringList(input.arg ?? input.args);
+    if (args) options.args = args;
+    if (input.env) options.env = input.env;
+    return options;
+  }
+
+  if (!input.url) {
+    throw new Error('HTTP MCP servers require "--url".');
+  }
+
+  const options: { name: string; transport: "http"; url: string; bearerEnv?: string } = {
+    name,
+    transport: "http",
+    url: input.url,
+  };
+  if (input.bearerEnv) options.bearerEnv = input.bearerEnv;
+  return options;
+}
+
+function normalizeStringList(value: string | string[] | undefined): string[] | undefined {
+  if (value === undefined) return undefined;
+  return Array.isArray(value) ? value : [value];
 }
 
 async function refreshMissingSchemas(service: ProjectService): Promise<void> {
@@ -306,4 +360,5 @@ export const __test = {
   describeServerTools,
   describeTool,
   normalizeArgv,
+  addDiscoverOptions,
 };

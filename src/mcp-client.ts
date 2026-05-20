@@ -1,4 +1,5 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 import { resolveHeaders } from "./headers";
@@ -26,12 +27,14 @@ export async function withMcpClient<T>(
   run: (client: Client) => Promise<T>,
 ): Promise<T> {
   const client = new Client({ name: "mcpx", version: MCPX_VERSION });
-  const headers = await resolveHeaders(server);
-  const transport = new StreamableHTTPClientTransport(new URL(server.url), {
-    requestInit: {
-      headers,
-    },
-  });
+  const transport =
+    server.transport === "stdio"
+      ? new StdioClientTransport(stdioTransportParams(server))
+      : new StreamableHTTPClientTransport(new URL(server.url), {
+          requestInit: {
+            headers: await resolveHeaders(server),
+          },
+        });
 
   try {
     await client.connect(transport as never);
@@ -40,6 +43,18 @@ export async function withMcpClient<T>(
     await client.close().catch(() => {});
     await transport.close().catch(() => {});
   }
+}
+
+function stdioTransportParams(server: ServerConfig) {
+  if (server.transport !== "stdio") throw new Error("Expected stdio MCP server config.");
+
+  const params: ConstructorParameters<typeof StdioClientTransport>[0] = {
+    command: server.command,
+    stderr: "pipe",
+  };
+  if (server.args) params.args = server.args;
+  if (server.env) params.env = server.env;
+  return params;
 }
 
 export async function listMcpTools(server: ServerConfig): Promise<McpTool[]> {
