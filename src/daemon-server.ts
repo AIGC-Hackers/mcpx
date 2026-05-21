@@ -34,10 +34,10 @@ type ManagedSession = {
   activeCalls: number;
   queuedCalls: number;
   lastUsedAt: number;
-  evicting: boolean;
   evictCount: number;
   lastSessionId?: string | undefined;
   currentBuffer?: NotificationBuffer | undefined;
+  pendingToolsChanged: boolean;
 };
 
 type DaemonCallResult = {
@@ -188,7 +188,9 @@ async function callTool(
           },
         );
         const notifications = buffer.flush();
-        return { result, notifications, toolsChanged: buffer.toolsChanged() };
+        const toolsChanged = buffer.toolsChanged() || session.pendingToolsChanged;
+        session.pendingToolsChanged = false;
+        return { result, notifications, toolsChanged };
       } catch (error) {
         if (session.server.transport === "http" && isUnauthorizedError(error)) {
           session.lastSessionId = session.connection?.sessionId() ?? session.lastSessionId;
@@ -256,8 +258,8 @@ function getSession(
     activeCalls: 0,
     queuedCalls: 0,
     lastUsedAt: Date.now(),
-    evicting: false,
     evictCount: 0,
+    pendingToolsChanged: false,
   };
   sessions.set(serverKey, session);
   return session;
@@ -270,7 +272,7 @@ async function ensureConnected(session: ManagedSession): Promise<ConnectedSessio
       headers: session.headers,
       sessionId: session.lastSessionId,
       onNotification: (notification) => {
-        session.currentBuffer?.add(notification);
+        recordNotification(session, notification);
       },
     })
       .catch(async (error) => {
@@ -279,7 +281,7 @@ async function ensureConnected(session: ManagedSession): Promise<ConnectedSessio
           return connectMcpClient(session.server, {
             headers: session.headers,
             onNotification: (notification) => {
-              session.currentBuffer?.add(notification);
+              recordNotification(session, notification);
             },
           });
         }
@@ -287,10 +289,12 @@ async function ensureConnected(session: ManagedSession): Promise<ConnectedSessio
       })
       .then((connection) => {
         session.connection = connection;
-        delete session.connecting;
         attachStderrLog(session, connection);
         void logDaemon(`started server=${session.serverKey} pid=${connection.pid() ?? "unknown"}`);
         return connection;
+      })
+      .finally(() => {
+        delete session.connecting;
       });
   }
   return session.connecting;
@@ -303,12 +307,10 @@ async function evictSession(
   if (!session) return { evicted: false };
   if (session.server.transport === "stdio") return { evicted: false, reason: "stdio" };
 
-  session.evicting = true;
   const evictTask = session.queue.then(async () => {
     session.lastSessionId = session.connection?.sessionId() ?? session.lastSessionId;
     await closeSession(session);
     session.evictCount += 1;
-    session.evicting = false;
     return { evicted: true };
   });
   session.queue = evictTask.catch(() => {});
@@ -317,6 +319,19 @@ async function evictSession(
     setTimeout(() => resolve({ evicted: false, timedOut: true }), EVICT_DEADLINE_MS).unref();
   });
   return Promise.race([evictTask, timeout]);
+}
+
+function recordNotification(
+  session: ManagedSession,
+  notification: { method: string; params?: unknown },
+): void {
+  if (session.currentBuffer) {
+    session.currentBuffer.add(notification);
+    return;
+  }
+  if (notification.method === "notifications/tools/list_changed") {
+    session.pendingToolsChanged = true;
+  }
 }
 
 function attachStderrLog(session: ManagedSession, connection: ConnectedSession): void {

@@ -115,6 +115,21 @@ describe("mcpxd daemon client", () => {
     });
   });
 
+  it("retries HTTP session creation after an initial connection failure", async () => {
+    await startDaemon();
+    const port = await freePort();
+    const server = {
+      url: `http://127.0.0.1:${port}/mcp`,
+      auth: { kind: "none" as const },
+    };
+
+    await expect(listMcpTools(server, "http-flaky")).rejects.toThrow();
+
+    const fixture = await startHttpFixture(port);
+    expect((await listMcpTools(server, "http-flaky")).map((tool) => tool.name)).toEqual(["echo"]);
+    expect(fixture.sessions.length).toBeGreaterThan(0);
+  });
+
   it("stops an incompatible daemon before starting a compatible one", async () => {
     await startFakeDaemon();
     process.argv[1] = mainPath;
@@ -219,7 +234,9 @@ async function stopFakeDaemon(): Promise<void> {
   await fs.rm(daemonSocketPath(), { force: true }).catch(() => {});
 }
 
-async function startHttpFixture(): Promise<{ url: string; sessions: (string | null)[] }> {
+async function startHttpFixture(
+  port?: number,
+): Promise<{ url: string; sessions: (string | null)[] }> {
   const sessions: (string | null)[] = [];
   httpFixture = http.createServer(async (request, response) => {
     if (request.method !== "POST") {
@@ -257,7 +274,7 @@ async function startHttpFixture(): Promise<{ url: string; sessions: (string | nu
 
   await new Promise<void>((resolve, reject) => {
     httpFixture?.once("error", reject);
-    httpFixture?.listen(0, "127.0.0.1", () => {
+    httpFixture?.listen(port ?? 0, "127.0.0.1", () => {
       httpFixture?.off("error", reject);
       resolve();
     });
@@ -265,6 +282,21 @@ async function startHttpFixture(): Promise<{ url: string; sessions: (string | nu
   const address = httpFixture.address();
   if (!address || typeof address === "string") throw new Error("HTTP fixture did not bind.");
   return { url: `http://127.0.0.1:${address.port}/mcp`, sessions };
+}
+
+async function freePort(): Promise<number> {
+  const server = http.createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+  const address = server.address();
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  if (!address || typeof address === "string") throw new Error("Free port lookup failed.");
+  return address.port;
 }
 
 async function stopHttpFixture(): Promise<void> {
