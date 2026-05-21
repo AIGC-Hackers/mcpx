@@ -137,6 +137,9 @@ mcpx @add --name <server> --url <mcp-url>
 mcpx @add --name <server> --transport stdio --command <command> --arg <arg>
 mcpx @remove --name <server>
 mcpx @refresh
+mcpx @daemon status
+mcpx @daemon stop
+mcpx @daemon server
 mcpx @skill
 ```
 
@@ -159,6 +162,12 @@ mcpx @add --input '{
 `@refresh` checks every registered MCP server, repairs OAuth state first,
 refreshes cached tool schemas after auth is ready, and reports servers that
 still require re-authentication. It may open a browser for interactive OAuth.
+
+Stdio servers are called through `mcpxd`, a user-local daemon that reuses stdio
+MCP sessions across CLI invocations. `mcpxd` starts on demand, keeps idle stdio
+servers warm, and can be inspected or stopped with `mcpx @daemon status` and
+`mcpx @daemon stop`. The daemon process is started through the explicit
+`mcpx @daemon server` subcommand. HTTP servers continue to use the direct client path.
 
 ## Authentication
 

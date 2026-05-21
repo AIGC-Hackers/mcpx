@@ -133,7 +133,7 @@ async function refreshOneServer(
   const readyServer = authResult.server;
   let refreshed: ServerConfig;
   try {
-    refreshed = await refreshServer(readyServer);
+    refreshed = await refreshServer(readyServer, name);
   } catch (error) {
     return writeFailureResult(name, readyServer, toolsBefore, error);
   }

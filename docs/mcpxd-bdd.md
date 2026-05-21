@@ -9,6 +9,11 @@ enough for repeated agent tool calls.
 
 HTTP MCP servers stay on the existing direct client path.
 
+V1 does not route HTTP MCP servers through the daemon. HTTP connections also
+have warm state, but their cold-start cost is mostly TLS/session setup and is
+partly mitigated by the existing token cache. Stdio cold-start cost is process
+spawn plus MCP initialization, which has no equivalent mitigation today.
+
 ## Reference Case
 
 Use `@modelcontextprotocol/server-filesystem` as the primary integration case.
@@ -39,8 +44,13 @@ control. Filesystem remains the acceptance case for real stdio MCP behavior.
 - No machine-wide or cross-user service.
 - No HTTP server routing through the daemon.
 - No automatic restart loop after a server crash.
-- No parallel calls over the same stdio MCP session.
+- No parallel calls over the same stdio MCP session. This is a V1
+  simplification, not an MCP protocol limit; JSON-RPC can support concurrent
+  request ids, but serial calls make timeout, cancellation, and stderr
+  attribution easier to reason about until daemon behavior is measured.
 - No Roots client implementation unless separately specified.
+- No server-pushed notification delivery beyond what is needed to complete the
+  current request/response call.
 
 ## Daemon Contract
 
@@ -50,11 +60,17 @@ truth for daemon liveness.
 
 Each managed stdio server has a stable server key derived from:
 
-- server registry name;
 - command;
 - args;
-- env;
+- env declarations as stored in the registry, not resolved runtime secret
+  values;
 - cwd when supported.
+
+The registry name is a display label and status grouping hint, not part of the
+server key. Two names with identical launch parameters may reuse the same child.
+If a registry stores raw env values, changing that value changes the key. Secret
+env references are preferred because they let token rotation avoid unnecessary
+session churn.
 
 The daemon owns:
 
@@ -63,6 +79,42 @@ The daemon owns:
 - `lastUsedAt` for idle cleanup;
 - graceful close and forced kill fallback;
 - daemon protocol version handshake.
+
+The CLI is the source of truth for registry config. Each tool-call IPC message
+carries the resolved stdio `ServerConfig` needed to launch the server. The
+daemon does not read or watch `servers.json`, which keeps registry edits visible
+on the next CLI invocation without extra reload logic.
+
+The daemon listens on a Unix domain socket on POSIX systems. The directory
+`~/.agents/mcpx/` must be created with `0700` permissions, and the socket must
+reject connections from other uids where the platform exposes peer credentials.
+On platforms without Unix sockets, the fallback IPC must provide the same
+single-user access boundary.
+
+V1 uses JSON Lines over the local IPC connection:
+
+```ts
+type ClientMessage =
+  | { op: "hello"; protocolVersion: 1; clientVersion: string }
+  | {
+      op: "call";
+      callId: string;
+      serverName: string;
+      serverKey: string;
+      server: StdioServerConfig;
+      toolName: string;
+      input: Record<string, unknown>;
+    }
+  | { op: "status" }
+  | { op: "stop" };
+
+type DaemonMessage =
+  | { ok: true; protocolVersion?: 1; result?: unknown }
+  | { ok: false; error: { code: string; message: string } };
+```
+
+If this protocol needs binary payloads later, replace JSON Lines with
+length-prefixed JSON. Do not add ad hoc newline escaping.
 
 ## Feature: CLI Starts Daemon On Demand
 
@@ -76,14 +128,36 @@ Scenario: cold daemon start
 - And the tool call succeeds
 - And the response includes the configured allowed directory
 
-Scenario: stale pid file without live socket
+Scenario: concurrent cold start
 
-- Given a daemon pid file exists
-- And the daemon socket is missing or rejects handshake
+- Given no `mcpxd` socket is accepting connections
+- When two CLI processes call stdio tools at the same time
+- Then at most one daemon wins the socket bind
+- And the losing CLI reconnects to the winning daemon
+- And both calls complete without creating two live daemons for the same user
+
+Scenario: stale socket file without live listener
+
+- Given a daemon socket path exists
+- And no process is accepting a valid handshake on that socket
 - When the user calls a stdio tool
-- Then the CLI ignores the stale pid file
+- Then the CLI removes the stale socket file
 - And starts a new daemon
 - And completes the call
+
+Scenario: daemon died between calls
+
+- Given a previous CLI call established a daemon
+- And the daemon process has since exited
+- When the user runs a stdio tool call
+- Then the CLI detects no live socket
+- And starts a new daemon
+- And the call completes
+- And stdio children from the dead daemon are not reused
+
+Stdio child processes must not be launched detached from the daemon. If the
+daemon dies, their stdin pipe closes; conforming stdio MCP servers should exit
+on EOF. Tests should verify this with the fixture and filesystem server.
 
 ## Feature: Stdio Server Session Reuse
 
@@ -103,6 +177,13 @@ Scenario: server key change starts a new child
 - And the daemon starts a new child process
 - And the old child is eligible for idle cleanup
 
+Scenario: renamed registry entry can reuse the same child
+
+- Given a stdio child was started from command, args, env declarations, and cwd
+- When another registry entry uses a different server name with the same launch parameters
+- Then the daemon derives the same server key
+- And may reuse the existing child process
+
 ## Feature: Idle TTL Cleanup
 
 Scenario: idle child exits after TTL
@@ -121,6 +202,18 @@ Scenario: active call is never killed by TTL
 - When the cleanup loop runs
 - Then the daemon does not close or kill that child
 - And cleanup waits until the call finishes and becomes idle
+
+Scenario: daemon exits after all children are idle
+
+- Given `mcpxd` has no active child processes
+- And the daemon has been idle longer than `daemonIdleTTL`
+- When the daemon cleanup loop runs
+- Then it removes its socket
+- And exits cleanly
+
+Default child `idleTTL` is `15m`. Default `daemonIdleTTL` is `30m`. A future
+registry field may allow a per-server override, but v1 should keep the global
+defaults simple unless implementation evidence says otherwise.
 
 ## Feature: Serial Calls Per Server
 
@@ -163,6 +256,35 @@ Scenario: stderr diagnostics do not corrupt MCP output
 - And stderr diagnostics are captured in daemon logs
 - And normal `mcpx` output contains only the tool result unless debug output is requested
 
+Scenario: daemon crash recovery prefers cold start
+
+- Given the daemon process terminates unexpectedly
+- When the user calls a stdio tool
+- Then the CLI starts a new daemon
+- And the call is served by a newly launched stdio child
+- And no direct-client fallback is used unless daemon startup itself fails clearly
+
+## Feature: Schema Refresh
+
+Scenario: missing stdio schema refresh goes through daemon
+
+- Given a registered stdio server has no cached tools
+- When the CLI needs to build the router or run `@refresh`
+- Then schema discovery uses `mcpxd` for stdio servers when daemon mode is enabled
+- And the CLI writes the discovered tools back to `servers.json`
+
+Scenario: HTTP schema refresh bypasses daemon
+
+- Given a registered HTTP server needs refresh
+- When the CLI runs startup refresh or `@refresh`
+- Then the existing HTTP refresh path is used
+- And no daemon process is required
+
+The daemon may keep an in-memory tool list for active stdio sessions, but the
+CLI remains responsible for persisting registry schema updates. V1 ignores
+server-pushed `tools/list_changed`; handling it belongs in a later notification
+design.
+
 ## Feature: Daemon Control Plane
 
 Scenario: daemon status
@@ -179,12 +301,36 @@ Scenario: daemon stop
 - And removes its socket
 - And exits cleanly
 
+Scenario: daemon server entrypoint
+
+- Given the CLI starts the daemon process
+- When it spawns `mcpx @daemon server`
+- Then the process listens as `mcpxd`
+- And there is no separate hidden `@daemon-server` command path
+
 Scenario: protocol mismatch
 
 - Given an existing daemon responds with an unsupported protocol version
 - When the CLI connects
-- Then the CLI refuses to send tool calls to it
-- And reports a clear upgrade/restart message
+- Then the CLI asks the old daemon to stop
+- And starts a compatible daemon
+- And continues the original call
+- And reports an error only if the old daemon cannot be stopped or replaced
+
+The status command gets the daemon pid from the live socket response. V1 does
+not rely on a persistent pid file for liveness; if a pid file is ever added, it
+is diagnostic only.
+
+## Logs
+
+Daemon logs are predictable and bounded:
+
+- `~/.agents/mcpx/logs/daemon.log` records daemon lifecycle and IPC errors.
+- `~/.agents/mcpx/logs/<server-key>.stderr.log` records child stderr.
+- Each log file is capped at `10MB` with two retained rotations.
+
+Normal `mcpx` command output must not include daemon logs unless the user asks
+for debug output.
 
 ## Test Strategy
 
@@ -206,11 +352,21 @@ Filesystem acceptance should cover:
 - a second call within TTL reuses the same child process;
 - after TTL, a later call starts a new child process and still reads the file.
 
+Stateful fixture acceptance should cover:
+
+- an in-process counter increments across separate CLI invocations within TTL;
+- the counter resets after the child is idle-cleaned and cold-started again;
+- a slow stateful call serializes same-server calls but does not block a
+  different server key.
+
 ## Open Decisions
 
-- Default TTL: proposed `5m`.
-- IPC encoding: JSON lines are easier to inspect; length-prefixed JSON is safer
-  for future binary-safe messages.
-- Logs: store daemon and child stderr logs under `~/.agents/mcpx/logs/`.
+- Whether V2 should allow concurrent in-flight calls over one stdio MCP session
+  after request-id multiplexing and cancellation behavior are measured.
+- Whether V2 should forward cancellation when the originating CLI disconnects
+  mid-call. V1 does not expose a fake cancel operation.
+- Whether V2 should surface MCP notifications. Two plausible options are
+  tail-attached notifications for the active call, or write-through handling for
+  schema-affecting notifications such as `tools/list_changed`.
 - Env persistence: registry may support explicit `env`, but secret-by-reference
   is safer for long-lived daemon use and should be preferred in docs.

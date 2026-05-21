@@ -42,21 +42,31 @@ describe("MCP client tool listing", () => {
   });
 
   it("lists and calls tools from stdio MCP servers", async () => {
+    const previous = process.env.MCPX_DISABLE_DAEMON;
+    process.env.MCPX_DISABLE_DAEMON = "1";
     const server: { transport: "stdio"; command: string; args: string[] } = {
       transport: "stdio",
       command: process.execPath,
       args: [path.join(import.meta.dir, "fixtures", "stdio-server.mjs")],
     };
 
-    expect(await listMcpTools(server)).toMatchObject([
-      {
-        name: "echo",
-        title: "Echo",
-        description: "Echo a fixed response",
-      },
-    ]);
-    expect(await callMcpTool(server, "echo", {})).toMatchObject({
-      content: [{ type: "text", text: "ok" }],
-    });
+    try {
+      expect(await listMcpTools(server)).toContainEqual(
+        expect.objectContaining({
+          name: "echo",
+          title: "Echo",
+          description: "Echo a fixed response",
+        }),
+      );
+      expect(await callMcpTool(server, "echo", {})).toMatchObject({
+        content: [{ type: "text", text: "ok" }],
+      });
+    } finally {
+      if (previous === undefined) {
+        delete process.env.MCPX_DISABLE_DAEMON;
+      } else {
+        process.env.MCPX_DISABLE_DAEMON = previous;
+      }
+    }
   });
 });

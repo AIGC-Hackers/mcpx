@@ -3,6 +3,8 @@ import { c, cli, createDefaultSchemaExplorer, group, type Router } from "argc";
 import * as v from "valibot";
 
 import { removeServerConfig, upsertServerConfig } from "./config";
+import { daemonStatus, stopDaemon } from "./daemon-client";
+import { runDaemonServer } from "./daemon-server";
 import { callMcpTool } from "./mcp-client";
 import { discoverServer, refreshServer } from "./discovery";
 import { jsonSchemaToStandardSchema } from "./json-schema-standard";
@@ -132,6 +134,23 @@ function buildRouter(service: ProjectService): Router {
       description: "Refresh all registered MCP server schemas and report auth status.",
       examples: ["mcpx @refresh"],
     }),
+    "@daemon": group(
+      { description: "Inspect or stop the local mcpxd daemon." },
+      {
+        status: c.meta({
+          description: "Show local mcpxd daemon status.",
+          examples: ["mcpx @daemon status"],
+        }),
+        stop: c.meta({
+          description: "Stop local mcpxd and its managed stdio MCP processes.",
+          examples: ["mcpx @daemon stop"],
+        }),
+        server: c.meta({
+          description: "Run the local mcpxd daemon server.",
+          examples: ["mcpx @daemon server"],
+        }),
+      },
+    ),
     "@skill": c
       .meta({
         description:
@@ -270,6 +289,18 @@ function buildHandlers(service: ProjectService, cwd: string): Record<string, unk
     await printOutput(await refreshAllServers(), options.context);
   };
 
+  handlers["@daemon"] = {
+    status: async (options: HandlerOptions<Record<string, never>>) => {
+      await printOutput(await daemonStatus(process.argv[1] ?? ""), options.context);
+    },
+    stop: async (options: HandlerOptions<Record<string, never>>) => {
+      await printOutput(await stopDaemon(process.argv[1] ?? ""), options.context);
+    },
+    server: async (_options: HandlerOptions<Record<string, never>>) => {
+      await runDaemonServer();
+    },
+  };
+
   handlers["@skill"] = async (options: HandlerOptions<{ servers?: string }>) => {
     await runSkillCommand(service, cwd, options.input);
   };
@@ -285,12 +316,12 @@ async function callToolWithReauthRetry(
   input: Record<string, unknown>,
 ): Promise<unknown> {
   try {
-    return await callMcpTool(server, toolName, input);
+    return await callMcpTool(server, toolName, input, serverName);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (server.transport === "stdio" || !isReauthRequiredMessage(message)) throw error;
     const reauthenticated = await service.reauthenticateServer(serverName);
-    return callMcpTool(reauthenticated, toolName, input);
+    return callMcpTool(reauthenticated, toolName, input, serverName);
   }
 }
 
@@ -340,7 +371,7 @@ async function refreshMissingSchemas(service: ProjectService): Promise<void> {
   for (const [name, server] of Object.entries(service.config.servers)) {
     if (server.tools && server.tools.length > 0) continue;
     try {
-      service.config.servers[name] = await refreshServer(server);
+      service.config.servers[name] = await refreshServer(server, name);
       changed = true;
     } catch {
       // Keep startup usable when auth is not available yet; add/discover records

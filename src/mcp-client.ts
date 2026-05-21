@@ -1,7 +1,10 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { Stream } from "node:stream";
 
+import { callToolViaDaemon, listToolsViaDaemon } from "./daemon-client";
+import { shouldUseDaemon } from "./daemon-protocol";
 import { resolveHeaders } from "./headers";
 import type { McpTool, ServerConfig, ToolAnnotations } from "./types";
 import { MCPX_VERSION } from "./version";
@@ -26,6 +29,21 @@ export async function withMcpClient<T>(
   server: ServerConfig,
   run: (client: Client) => Promise<T>,
 ): Promise<T> {
+  const session = await connectMcpClient(server);
+
+  try {
+    return await run(session.client);
+  } finally {
+    await session.close();
+  }
+}
+
+export async function connectMcpClient(server: ServerConfig): Promise<{
+  client: Client;
+  close: () => Promise<void>;
+  pid: () => number | null;
+  stderr: Stream | null;
+}> {
   const client = new Client({ name: "mcpx", version: MCPX_VERSION });
   const transport =
     server.transport === "stdio"
@@ -36,13 +54,22 @@ export async function withMcpClient<T>(
           },
         });
 
-  try {
-    await client.connect(transport as never);
-    return await run(client);
-  } finally {
-    await client.close().catch(() => {});
-    await transport.close().catch(() => {});
-  }
+  await client.connect(transport as never);
+  return {
+    client,
+    close: async () => {
+      await client.close().catch(() => {});
+      await transport.close().catch(() => {});
+    },
+    pid: () =>
+      server.transport === "stdio" && transport instanceof StdioClientTransport
+        ? transport.pid
+        : null,
+    stderr:
+      server.transport === "stdio" && transport instanceof StdioClientTransport
+        ? transport.stderr
+        : null,
+  };
 }
 
 function stdioTransportParams(server: ServerConfig) {
@@ -54,10 +81,14 @@ function stdioTransportParams(server: ServerConfig) {
   };
   if (server.args) params.args = server.args;
   if (server.env) params.env = server.env;
+  if (server.cwd) params.cwd = server.cwd;
   return params;
 }
 
-export async function listMcpTools(server: ServerConfig): Promise<McpTool[]> {
+export async function listMcpTools(server: ServerConfig, serverName = "stdio"): Promise<McpTool[]> {
+  if (server.transport === "stdio" && shouldUseDaemon()) {
+    return listToolsViaDaemon(server, serverName);
+  }
   return withMcpClient(server, async (client) => listAllMcpTools(client));
 }
 
@@ -88,7 +119,11 @@ export async function callMcpTool(
   server: ServerConfig,
   toolName: string,
   input: Record<string, unknown>,
+  serverName = "stdio",
 ): Promise<unknown> {
+  if (server.transport === "stdio" && shouldUseDaemon()) {
+    return callToolViaDaemon(server, serverName, toolName, input);
+  }
   return withMcpClient(server, async (client) =>
     client.callTool({ name: toolName, arguments: input }),
   );

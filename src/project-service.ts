@@ -24,7 +24,7 @@ export async function loadProjectService(): Promise<ProjectService> {
       if (server.tools && server.tools.length > 0) {
         return server;
       }
-      const refreshed = await refreshServer(server);
+      const refreshed = await refreshServer(server, name);
       config.servers[name] = refreshed;
       await writeRegistryConfig(config);
       return refreshed;

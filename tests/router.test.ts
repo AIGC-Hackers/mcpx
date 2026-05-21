@@ -15,7 +15,13 @@ describe("router", () => {
       save: async () => {},
     });
 
-    expect(Object.keys(router).sort()).toEqual(["@add", "@refresh", "@remove", "@skill"]);
+    expect(Object.keys(router).sort()).toEqual([
+      "@add",
+      "@daemon",
+      "@refresh",
+      "@remove",
+      "@skill",
+    ]);
   });
 
   it("describes server groups by tool count", () => {

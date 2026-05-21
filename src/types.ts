@@ -62,6 +62,7 @@ export type StdioServerConfig = {
   command: string;
   args?: string[];
   env?: Record<string, string>;
+  cwd?: string;
   discoveredAt?: string;
   tools?: ToolDefinition[];
   refreshStatus?: ServerRefreshStatus;

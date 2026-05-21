@@ -67,7 +67,7 @@ export async function discoverServer(options: DiscoverServerOptions): Promise<Di
   };
 
   try {
-    const tools = await listMcpTools(server);
+    const tools = await listMcpTools(server, options.name);
     server.tools = normalizeTools(tools);
     return { server, status: "ready", message: `Discovered ${server.tools.length} tool(s).` };
   } catch (error) {
@@ -99,7 +99,7 @@ async function discoverStdioServer(
   };
 
   try {
-    const tools = await listMcpTools(server);
+    const tools = await listMcpTools(server, options.name);
     server.tools = normalizeTools(tools);
     return { server, status: "ready", message: `Discovered ${server.tools.length} tool(s).` };
   } catch (error) {
@@ -108,8 +108,8 @@ async function discoverStdioServer(
   }
 }
 
-export async function refreshServer(server: ServerConfig): Promise<ServerConfig> {
-  const tools = await listMcpTools(server);
+export async function refreshServer(server: ServerConfig, name = "stdio"): Promise<ServerConfig> {
+  const tools = await listMcpTools(server, name);
   return {
     ...server,
     discoveredAt: new Date().toISOString(),
