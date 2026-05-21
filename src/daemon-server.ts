@@ -171,22 +171,7 @@ async function callTool(
       const buffer = createNotificationBuffer();
       session.currentBuffer = message.notificationMode === "discard" ? undefined : buffer;
       try {
-        const connection = await ensureConnected(session);
-        const result = await connection.client.callTool(
-          {
-            name: message.toolName,
-            arguments: message.input,
-          },
-          undefined,
-          {
-            onprogress: (progress) => {
-              buffer.add({
-                method: "notifications/progress",
-                params: { progressToken: message.callId, ...progress },
-              });
-            },
-          },
-        );
+        const result = await callToolWithRetainedSessionFallback(session, message, buffer);
         const notifications = buffer.flush();
         const toolsChanged = buffer.toolsChanged() || session.pendingToolsChanged;
         session.pendingToolsChanged = false;
@@ -201,6 +186,50 @@ async function callTool(
       } finally {
         delete session.currentBuffer;
       }
+    },
+  );
+}
+
+async function callToolWithRetainedSessionFallback(
+  session: ManagedSession,
+  message: Extract<ClientMessage, { op: "call" }>,
+  buffer: NotificationBuffer,
+): Promise<unknown> {
+  try {
+    return await callToolOnConnectedSession(session, message, buffer);
+  } catch (error) {
+    if (
+      session.server.transport === "http" &&
+      session.lastSessionId &&
+      isRetainedSessionRejected(error)
+    ) {
+      await closeSession(session);
+      delete session.lastSessionId;
+      return callToolOnConnectedSession(session, message, buffer);
+    }
+    throw error;
+  }
+}
+
+async function callToolOnConnectedSession(
+  session: ManagedSession,
+  message: Extract<ClientMessage, { op: "call" }>,
+  buffer: NotificationBuffer,
+): Promise<unknown> {
+  const connection = await ensureConnected(session);
+  return connection.client.callTool(
+    {
+      name: message.toolName,
+      arguments: message.input,
+    },
+    undefined,
+    {
+      onprogress: (progress) => {
+        buffer.add({
+          method: "notifications/progress",
+          params: { progressToken: message.callId, ...progress },
+        });
+      },
     },
   );
 }
@@ -308,8 +337,9 @@ async function evictSession(
   if (session.server.transport === "stdio") return { evicted: false, reason: "stdio" };
 
   const evictTask = session.queue.then(async () => {
-    session.lastSessionId = session.connection?.sessionId() ?? session.lastSessionId;
-    await closeSession(session);
+    // Real HTTP servers can bind session ids to the old bearer token.
+    await closeSession(session, { retainHttpSessionId: message.reason !== "auth-refreshed" });
+    if (message.reason === "auth-refreshed") delete session.lastSessionId;
     session.evictCount += 1;
     return { evicted: true };
   });
@@ -363,15 +393,19 @@ async function cleanupIdleSessions(server: net.Server): Promise<void> {
 async function stopDaemon(): Promise<void> {
   stopping = true;
   await Promise.all([...sessions.values()].map((session) => session.queue.catch(() => {})));
-  await Promise.all([...sessions.values()].map(closeSession));
+  await Promise.all([...sessions.values()].map((session) => closeSession(session)));
   sessions.clear();
   await fs.rm(daemonSocketPath(), { force: true }).catch(() => {});
   process.exitCode = 0;
   setTimeout(() => process.exit(0), 10).unref();
 }
 
-async function closeSession(session: ManagedSession): Promise<void> {
-  if (session.server.transport === "http") {
+async function closeSession(
+  session: ManagedSession,
+  options: { retainHttpSessionId?: boolean } = {},
+): Promise<void> {
+  const retainHttpSessionId = options.retainHttpSessionId ?? true;
+  if (session.server.transport === "http" && retainHttpSessionId) {
     session.lastSessionId = session.connection?.sessionId() ?? session.lastSessionId;
   }
   await session.connection?.close().catch(() => {});
@@ -476,7 +510,14 @@ function shortHash(value: string): string {
 
 function isRetainedSessionRejected(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return message.includes("404") || message.toLowerCase().includes("bad session");
+  const normalized = message.toLowerCase();
+  return (
+    message.includes("404") ||
+    normalized.includes("bad session") ||
+    // PostHog returns this when a retained session id outlives its access token.
+    normalized.includes("invalid api key") ||
+    normalized.includes("invalid_api_key")
+  );
 }
 
 function isUnauthorizedError(error: unknown): boolean {

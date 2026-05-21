@@ -8,9 +8,10 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 
 import { daemonStatus, stopDaemon } from "../src/daemon-client";
 import { daemonSocketPath } from "../src/daemon-paths";
-import { writeJsonLine } from "../src/daemon-io";
+import { requestJsonLine, writeJsonLine } from "../src/daemon-io";
 import { callMcpTool, listMcpTools } from "../src/mcp-client";
 import type { StdioServerConfig } from "../src/types";
+import { buildServerKey, helloMessage } from "../src/daemon-protocol";
 
 const mainPath = path.join(import.meta.dir, "..", "src", "main.ts");
 
@@ -130,6 +131,41 @@ describe("mcpxd daemon client", () => {
     expect(fixture.sessions.length).toBeGreaterThan(0);
   });
 
+  it("drops retained HTTP session ids after invalid api key rejection", async () => {
+    await startDaemon();
+    const fixture = await startHttpFixture(undefined, { rejectRetainedCallOnce: true });
+    const server = {
+      transport: "http" as const,
+      url: fixture.url,
+      auth: { kind: "none" as const },
+    };
+
+    expect(text(await callMcpTool(server, "echo", {}, "http-fixture"))).toBe("http-ok");
+    await evictDaemonSession(buildServerKey(server));
+    expect(text(await callMcpTool(server, "echo", {}, "http-fixture"))).toBe("http-ok");
+
+    expect(fixture.sessions).toContain("session-1");
+    expect(fixture.sessions).toContain("session-2");
+  });
+
+  it("drops retained HTTP session ids for auth-refreshed eviction", async () => {
+    await startDaemon();
+    const fixture = await startHttpFixture(undefined, { rejectRetainedCallOnce: true });
+    const server = {
+      transport: "http" as const,
+      url: fixture.url,
+      auth: { kind: "none" as const },
+    };
+
+    expect(text(await callMcpTool(server, "echo", {}, "http-fixture"))).toBe("http-ok");
+    const sessionsBeforeEvict = fixture.sessions.length;
+    await evictDaemonSession(buildServerKey(server), "auth-refreshed");
+    expect(text(await callMcpTool(server, "echo", {}, "http-fixture"))).toBe("http-ok");
+
+    expect(fixture.sessions.slice(sessionsBeforeEvict)).not.toContain("session-1");
+    expect(fixture.sessions.slice(sessionsBeforeEvict)).toContain("session-2");
+  });
+
   it("stops an incompatible daemon before starting a compatible one", async () => {
     await startFakeDaemon();
     process.argv[1] = mainPath;
@@ -234,10 +270,31 @@ async function stopFakeDaemon(): Promise<void> {
   await fs.rm(daemonSocketPath(), { force: true }).catch(() => {});
 }
 
+async function evictDaemonSession(
+  serverKey: string,
+  reason: "auth-refreshed" | "unauthorized" | "manual" = "manual",
+): Promise<void> {
+  const socket = await new Promise<net.Socket>((resolve, reject) => {
+    const connected = net.createConnection(daemonSocketPath());
+    connected.once("connect", () => resolve(connected));
+    connected.once("error", reject);
+  });
+  try {
+    await requestJsonLine(socket, helloMessage());
+    await requestJsonLine(socket, { op: "evictSession", serverKey, reason });
+  } finally {
+    socket.end();
+  }
+}
+
 async function startHttpFixture(
   port?: number,
+  options: { rejectRetainedCallOnce?: boolean } = {},
 ): Promise<{ url: string; sessions: (string | null)[] }> {
   const sessions: (string | null)[] = [];
+  let nextSession = 1;
+  let rejectedRetainedCall = false;
+  let toolCalls = 0;
   httpFixture = http.createServer(async (request, response) => {
     if (request.method !== "POST") {
       response.writeHead(405).end();
@@ -246,12 +303,40 @@ async function startHttpFixture(
 
     const body = await readRequestBody(request);
     const message = JSON.parse(body) as { id?: string | number; method: string };
-    sessions.push(request.headers["mcp-session-id"]?.toString() ?? null);
+    const sessionId = request.headers["mcp-session-id"]?.toString() ?? null;
+    sessions.push(sessionId);
 
-    if (message.method === "notifications/initialized") {
-      response.writeHead(202, { "mcp-session-id": "session-1" }).end();
+    if (
+      options.rejectRetainedCallOnce &&
+      !rejectedRetainedCall &&
+      toolCalls > 0 &&
+      message.method === "tools/call" &&
+      sessionId === "session-1"
+    ) {
+      rejectedRetainedCall = true;
+      response
+        .writeHead(200, {
+          "content-type": "application/json",
+          "mcp-session-id": "session-1",
+        })
+        .end(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: message.id,
+            error: { code: -32000, message: "INVALID_API_KEY" },
+          }),
+        );
       return;
     }
+    if (message.method === "tools/call") toolCalls += 1;
+
+    if (message.method === "notifications/initialized") {
+      response.writeHead(202, { "mcp-session-id": sessionId ?? "session-1" }).end();
+      return;
+    }
+
+    const responseSession =
+      message.method === "initialize" ? `session-${nextSession++}` : (sessionId ?? "session-1");
 
     const result =
       message.method === "initialize"
@@ -267,7 +352,7 @@ async function startHttpFixture(
     response
       .writeHead(200, {
         "content-type": "application/json",
-        "mcp-session-id": "session-1",
+        "mcp-session-id": responseSession,
       })
       .end(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }));
   });

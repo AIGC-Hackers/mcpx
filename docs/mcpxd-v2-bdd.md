@@ -166,12 +166,12 @@ The raw session id is never exposed externally. `sessionIdHash` is for diagnosti
 - When the CLI sends `{ op: "evictSession", serverKey, reason: "auth-refreshed" }`
 - Then the daemon drains the in-flight queue
 - And closes the transport
-- And retains `lastSessionId` in memory for that session entry
+- And drops `lastSessionId` for that session entry
 - And increments `evictCount`
 - And responds `{ ok: true, result: { evicted: true } }`
 - When the CLI sends the next `call` with refreshed headers
-- Then the daemon rebuilds `StreamableHTTPClientTransport` with `{ sessionId: lastSessionId, requestInit.headers: <new> }`
-- And if the server accepts the session id, the server-side session continues
+- Then the daemon rebuilds `StreamableHTTPClientTransport` with `{ requestInit.headers: <new> }`
+- And starts a fresh server-side session
 - And the call succeeds
 
 **Scenario: daemon self-evicts on 401 mid-call**
@@ -392,6 +392,20 @@ Cases:
 - Existing stdio fixture extended with progress notification tool.
 - Filesystem MCP unchanged (still V1 stdio path, now via V2 daemon).
 
+### Real Server Quirks
+
+PostHog (`https://mcp.posthog.com/mcp`) is the V2 gated benchmark target because it exercises
+real OAuth, Streamable HTTP session ids, and a large tool schema.
+
+- PostHog issues `mcp-session-id` during initialize and accepts it across subsequent POST calls.
+- The SDK may open a GET SSE stream that PostHog answers with HTTP 500 while POST tool calls still
+  succeed. V2 must not treat that observed GET failure as evidence that POST session reuse is broken.
+- PostHog retained sessions appear coupled to the access token that created them. After OAuth refresh,
+  rebuilding a transport with the previous `mcp-session-id` can fail with `INVALID_API_KEY`; mcpxd
+  must not retain session ids across `auth-refreshed` eviction. If another retained rebuild is
+  rejected with `INVALID_API_KEY`, mcpxd must drop the retained id, rebuild fresh, and retry the
+  original call once.
+
 ## Spike Results
 
 - Spike A (#14): SDK `1.29.0` reflects mutations to the original `requestInit.headers` object on the next `transport.send()`. Replacing only a local variable does not affect transport headers.
@@ -400,7 +414,7 @@ Cases:
 Implementation consequences:
 
 1. V2 can use daemon-owned mutable headers as the normal token-refresh fast path.
-2. `evictSession` retains `lastSessionId` and rebuilds transport for auth shape changes, 401, or explicit manual eviction.
+2. `evictSession` drops `lastSessionId` for `auth-refreshed`; manual eviction may retain it.
 3. On retained-session rejection, mcpx must explicitly drop `lastSessionId`, construct a fresh transport, and retry/fail according to original call semantics.
 
 ## References
