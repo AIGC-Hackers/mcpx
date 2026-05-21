@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import net, { type Socket } from "node:net";
 
 import { ensureDaemonDir, daemonLogPath, daemonSocketPath, serverLogPath } from "./daemon-paths";
-import { readJsonLines, writeJsonLine } from "./daemon-io";
+import { readJsonLines, requestJsonLine, writeJsonLine } from "./daemon-io";
 import {
   DAEMON_PROTOCOL_VERSION,
   type ClientMessage,
@@ -124,12 +124,6 @@ async function handleMessage(socket: Socket, message: unknown): Promise<void> {
       case "stop":
         writeJsonLine(socket, okResponse({ stopping: true }));
         await stopDaemon();
-        return;
-      case "cancel":
-        writeJsonLine(
-          socket,
-          errorResponse("unsupported", "Cancellation is not implemented in mcpxd v1."),
-        );
         return;
     }
   } catch (error) {
@@ -316,42 +310,30 @@ async function rotateLogIfNeeded(filePath: string, incomingBytes: number): Promi
 function isClientMessage(value: unknown): value is ClientMessage {
   if (!value || typeof value !== "object") return false;
   const op = (value as { op?: unknown }).op;
-  return (
-    op === "hello" ||
-    op === "listTools" ||
-    op === "call" ||
-    op === "status" ||
-    op === "stop" ||
-    op === "cancel"
-  );
+  return op === "hello" || op === "listTools" || op === "call" || op === "status" || op === "stop";
 }
 
 async function isLiveSocket(socketPath: string): Promise<boolean> {
-  return new Promise((resolve) => {
+  const socket = await connectSocket(socketPath).catch(() => undefined);
+  if (!socket) return false;
+  try {
+    const parsed = (await requestJsonLine(socket, {
+      op: "hello",
+      protocolVersion: DAEMON_PROTOCOL_VERSION,
+      clientVersion: MCPX_VERSION,
+    } satisfies ClientMessage)) as DaemonMessage;
+    return parsed.ok === true && parsed.protocolVersion === DAEMON_PROTOCOL_VERSION;
+  } catch {
+    return false;
+  } finally {
+    socket.destroy();
+  }
+}
+
+async function connectSocket(socketPath: string): Promise<Socket> {
+  return new Promise((resolve, reject) => {
     const socket = net.createConnection(socketPath);
-    let buffer = "";
-    const done = (live: boolean) => {
-      socket.destroy();
-      resolve(live);
-    };
-    socket.once("connect", () => {
-      writeJsonLine(socket, {
-        op: "hello",
-        protocolVersion: DAEMON_PROTOCOL_VERSION,
-        clientVersion: MCPX_VERSION,
-      } satisfies ClientMessage);
-    });
-    socket.on("data", (chunk) => {
-      buffer += chunk.toString("utf8");
-      const newline = buffer.indexOf("\n");
-      if (newline === -1) return;
-      try {
-        const parsed = JSON.parse(buffer.slice(0, newline)) as DaemonMessage;
-        done(parsed.ok === true && parsed.protocolVersion === DAEMON_PROTOCOL_VERSION);
-      } catch {
-        done(false);
-      }
-    });
-    socket.once("error", () => done(false));
+    socket.once("connect", () => resolve(socket));
+    socket.once("error", reject);
   });
 }

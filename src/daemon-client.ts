@@ -1,7 +1,7 @@
 import net from "node:net";
 
 import { ensureDaemonDir, daemonSocketPath } from "./daemon-paths";
-import { readJsonLines, writeJsonLine } from "./daemon-io";
+import { requestJsonLine } from "./daemon-io";
 import {
   DAEMON_PROTOCOL_VERSION,
   buildServerKey,
@@ -77,7 +77,12 @@ async function ensureDaemon(mainPath: string): Promise<void> {
   const state = await probeDaemon();
   if (state === "compatible") return;
   if (state === "incompatible") {
-    await stopIncompatibleDaemon().catch(() => {});
+    try {
+      await stopIncompatibleDaemon();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to stop incompatible mcpxd: ${message}`);
+    }
   }
 
   await ensureDaemonDir();
@@ -126,6 +131,7 @@ async function stopIncompatibleDaemon(): Promise<void> {
     if ((await probeDaemon()) === "missing") return;
     await sleep(CONNECT_RETRY_MS);
   }
+  throw new Error("Incompatible mcpxd did not stop before the timeout.");
 }
 
 async function connectSocket(): Promise<net.Socket> {
@@ -141,7 +147,7 @@ async function sendAndExpectOk(
   message: ClientMessage,
   options: { allowProtocolMismatch?: boolean } = {},
 ): Promise<unknown> {
-  const response = await sendAndReceive(socket, message);
+  const response = await requestJsonLine(socket, message);
   if (isDaemonMessage(response) && response.ok) return response.result ?? response;
   if (isDaemonMessage(response) && !response.ok) {
     if (options.allowProtocolMismatch && response.error.code === "protocol-mismatch") {
@@ -159,31 +165,6 @@ async function withDaemonConnection<T>(run: (socket: net.Socket) => Promise<T>):
   } finally {
     socket.end();
   }
-}
-
-async function sendAndReceive(socket: net.Socket, message: ClientMessage): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const cleanup = () => {
-      socket.off("error", onError);
-    };
-    const onError = (error: Error) => {
-      cleanup();
-      reject(error);
-    };
-    socket.once("error", onError);
-    readJsonLines(
-      socket,
-      (value) => {
-        cleanup();
-        resolve(value);
-      },
-      (error) => {
-        cleanup();
-        reject(error);
-      },
-    );
-    writeJsonLine(socket, message);
-  });
 }
 
 function isDaemonMessage(value: unknown): value is DaemonMessage {

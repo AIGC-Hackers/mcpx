@@ -8,10 +8,10 @@ export function readJsonLines(
   socket: Socket,
   onMessage: (message: unknown) => void,
   onInvalid: (error: Error) => void,
-): void {
+): () => void {
   let buffer = "";
 
-  socket.on("data", (chunk) => {
+  const onData = (chunk: Buffer) => {
     buffer += chunk.toString("utf8");
     while (true) {
       const newline = buffer.indexOf("\n");
@@ -27,5 +27,38 @@ export function readJsonLines(
         onInvalid(error instanceof Error ? error : new Error(String(error)));
       }
     }
+  };
+
+  socket.on("data", onData);
+  return () => {
+    socket.off("data", onData);
+  };
+}
+
+export async function requestJsonLine(socket: Socket, value: unknown): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    let unsubscribe = () => {};
+    const cleanup = () => {
+      socket.off("error", onError);
+      unsubscribe();
+    };
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+
+    socket.once("error", onError);
+    unsubscribe = readJsonLines(
+      socket,
+      (message) => {
+        cleanup();
+        resolve(message);
+      },
+      (error) => {
+        cleanup();
+        reject(error);
+      },
+    );
+    writeJsonLine(socket, value);
   });
 }

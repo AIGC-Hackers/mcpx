@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import type { McpTool, StdioServerConfig } from "./types";
+import type { StdioServerConfig } from "./types";
 import { MCPX_VERSION } from "./version";
 
 export const DAEMON_PROTOCOL_VERSION = 1;
@@ -41,16 +41,11 @@ export type ClientMessage =
       input: Record<string, unknown>;
     }
   | { op: "status" }
-  | { op: "stop" }
-  | { op: "cancel"; callId: string };
+  | { op: "stop" };
 
 export type DaemonMessage =
   | { ok: true; protocolVersion?: number; result?: unknown }
   | { ok: false; error: { code: string; message: string } };
-
-export type DaemonCallResult =
-  | { kind: "tools"; tools: McpTool[] }
-  | { kind: "tool-result"; result: unknown };
 
 export function shouldUseDaemon(): boolean {
   return process.env[DAEMON_ENV] !== "1" && process.env[DISABLE_DAEMON_ENV] !== "1";
