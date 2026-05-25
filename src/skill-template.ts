@@ -55,9 +55,10 @@ Use schema selectors to narrow large MCP surfaces before choosing a tool:
 - \`.server.{tool-a,tool-b,tool-c}\` shows a short list of candidate tools
 
 Normal workflow: inspect the project-approved servers first, identify likely
-tool names from the outline, then run a narrower selector such as
-\`mcpx --schema=.posthog.{projects-get,alerts-list,alert-create}\` before
-calling a tool.
+tool names, then follow the schema status line. If the schema says it was fully
+output, call the chosen tool directly. If it says only a compact outline was
+shown, run a narrower selector such as
+\`mcpx --schema=.posthog.{projects-get,alerts-list,alert-create}\`.
 
 ## Call
 
