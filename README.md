@@ -194,6 +194,9 @@ continuing the prompt.
 When an OAuth token is close to expiry, mcpx refreshes it before calling the MCP
 tool and then continues the original command.
 
+Tool calls use a 5 minute request timeout by default. Set
+`MCPX_TOOL_CALL_TIMEOUT_MS` when a remote MCP server legitimately needs longer.
+
 ## Output
 
 mcpx optimizes output for humans and agents by default:

@@ -1,6 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { RequestOptions } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { Stream } from "node:stream";
 
 import { callToolViaDaemon, listToolsViaDaemon } from "./daemon-client";
@@ -8,6 +9,9 @@ import { shouldUseDaemon } from "./daemon-protocol";
 import { resolveHeaders } from "./headers";
 import type { McpTool, ServerConfig, ToolAnnotations } from "./types";
 import { MCPX_VERSION } from "./version";
+
+const DEFAULT_TOOL_CALL_TIMEOUT_MS = 5 * 60 * 1000;
+const TOOL_CALL_TIMEOUT_ENV = "MCPX_TOOL_CALL_TIMEOUT_MS";
 
 type ListToolsClient = {
   listTools: (params?: { cursor?: string }) => Promise<{
@@ -163,8 +167,21 @@ export async function callMcpTool(
     return callToolViaDaemon(server, serverName, toolName, input);
   }
   return withMcpClient(server, async (client) =>
-    client.callTool({ name: toolName, arguments: input }),
+    client.callTool({ name: toolName, arguments: input }, undefined, toolCallRequestOptions()),
   );
+}
+
+export function toolCallRequestOptions(): RequestOptions {
+  return { timeout: toolCallTimeoutMs() };
+}
+
+function toolCallTimeoutMs(): number {
+  const raw = process.env[TOOL_CALL_TIMEOUT_ENV];
+  if (!raw) return DEFAULT_TOOL_CALL_TIMEOUT_MS;
+
+  const parsed = Number(raw);
+  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  return DEFAULT_TOOL_CALL_TIMEOUT_MS;
 }
 
 function isToolAnnotations(value: unknown): value is ToolAnnotations {

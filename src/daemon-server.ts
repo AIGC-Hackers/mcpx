@@ -13,7 +13,12 @@ import {
   type DaemonStatus,
   type McpNotification,
 } from "./daemon-protocol";
-import { connectMcpClient, listAllMcpTools, type McpConnection } from "./mcp-client";
+import {
+  connectMcpClient,
+  listAllMcpTools,
+  toolCallRequestOptions,
+  type McpConnection,
+} from "./mcp-client";
 import { createNotificationBuffer, type NotificationBuffer } from "./notifications";
 import type { McpTool, ServerConfig } from "./types";
 import { MCPX_VERSION } from "./version";
@@ -233,6 +238,7 @@ async function callToolOnConnectedSession(
           params: { progressToken: message.callId, ...progress },
         });
       },
+      ...toolCallRequestOptions(),
     },
   );
 }

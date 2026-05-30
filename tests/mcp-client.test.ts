@@ -1,7 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import path from "node:path";
 
-import { callMcpTool, listAllMcpTools, listMcpTools, normalizeMcpTool } from "../src/mcp-client";
+import {
+  callMcpTool,
+  listAllMcpTools,
+  listMcpTools,
+  normalizeMcpTool,
+  toolCallRequestOptions,
+} from "../src/mcp-client";
 
 describe("MCP client tool listing", () => {
   it("paginates listTools results", async () => {
@@ -39,6 +45,26 @@ describe("MCP client tool listing", () => {
       annotations: { destructiveHint: true },
       _meta: { trace: true },
     });
+  });
+
+  it("uses an explicit tool call timeout with an env override", () => {
+    const previous = process.env.MCPX_TOOL_CALL_TIMEOUT_MS;
+    try {
+      delete process.env.MCPX_TOOL_CALL_TIMEOUT_MS;
+      expect(toolCallRequestOptions().timeout).toBe(300_000);
+
+      process.env.MCPX_TOOL_CALL_TIMEOUT_MS = "120000";
+      expect(toolCallRequestOptions().timeout).toBe(120_000);
+
+      process.env.MCPX_TOOL_CALL_TIMEOUT_MS = "invalid";
+      expect(toolCallRequestOptions().timeout).toBe(300_000);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.MCPX_TOOL_CALL_TIMEOUT_MS;
+      } else {
+        process.env.MCPX_TOOL_CALL_TIMEOUT_MS = previous;
+      }
+    }
   });
 
   it("lists and calls tools from stdio MCP servers", async () => {

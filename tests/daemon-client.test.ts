@@ -175,6 +175,15 @@ describe("mcpxd daemon client", () => {
     expect((await daemonStatus(mainPath)).protocolVersion).toBe(2);
   });
 
+  it("stops an older same-protocol daemon before starting the current version", async () => {
+    await startFakeDaemon({ protocolVersion: 2, version: "0.0.0" });
+    process.argv[1] = mainPath;
+
+    expect(text(await callMcpTool(fixtureServer(), "echo", {}, "fixture"))).toBe("ok");
+    expect(fakeDaemon).toBeUndefined();
+    expect((await daemonStatus(mainPath)).version).not.toBe("0.0.0");
+  });
+
   it("reports and stops the daemon", async () => {
     await startDaemon();
     const server = fixtureServer();
@@ -235,7 +244,11 @@ async function waitForStopped(): Promise<void> {
   throw new Error("daemon did not stop");
 }
 
-async function startFakeDaemon(): Promise<void> {
+async function startFakeDaemon(
+  options: { protocolVersion?: number; version?: string } = {},
+): Promise<void> {
+  const protocolVersion = options.protocolVersion ?? 0;
+  const version = options.version ?? "old";
   await fs.mkdir(path.dirname(daemonSocketPath()), { recursive: true });
   fakeDaemon = net.createServer((socket) => {
     socket.on("data", (chunk) => {
@@ -243,8 +256,8 @@ async function startFakeDaemon(): Promise<void> {
       if (text.includes('"op":"hello"')) {
         writeJsonLine(socket, {
           ok: true,
-          protocolVersion: 0,
-          result: { protocolVersion: 0, version: "old" },
+          protocolVersion,
+          result: { protocolVersion, version },
         });
       }
       if (text.includes('"op":"stop"')) {

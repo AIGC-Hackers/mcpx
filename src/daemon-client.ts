@@ -13,6 +13,7 @@ import {
 } from "./daemon-protocol";
 import { resolveHeadersWithState } from "./headers";
 import type { McpTool, ServerConfig } from "./types";
+import { MCPX_VERSION } from "./version";
 
 const START_TIMEOUT_MS = 3_000;
 const CONNECT_RETRY_MS = 50;
@@ -164,11 +165,17 @@ async function canHandshake(): Promise<boolean> {
 async function probeDaemon(): Promise<"compatible" | "incompatible" | "missing"> {
   try {
     const result = await withDaemonConnection((socket) => sendAndExpectOk(socket, helloMessage()));
-    const version =
+    const protocolVersion =
       typeof result === "object" && result !== null && "protocolVersion" in result
         ? result.protocolVersion
         : undefined;
-    return version === DAEMON_PROTOCOL_VERSION ? "compatible" : "incompatible";
+    const daemonVersion =
+      typeof result === "object" && result !== null && "version" in result
+        ? result.version
+        : undefined;
+    return protocolVersion === DAEMON_PROTOCOL_VERSION && daemonVersion === MCPX_VERSION
+      ? "compatible"
+      : "incompatible";
   } catch {
     return "missing";
   }
