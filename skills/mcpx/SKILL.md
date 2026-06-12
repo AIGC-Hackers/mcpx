@@ -67,7 +67,7 @@ mcpx <server> <tool> --input @- <<'JSON'
 JSON
 ```
 
-Default output is optimized for agents (TOON encoding for structured content,
+Default output is optimized for agents (YAML for structured content,
 direct text passthrough, media saved as `file saved <path>`). Use `--raw` to
 disable that optimization. When a tool emits notifications, `--raw` output may
 also include a JSON envelope — see Notifications below.
@@ -90,12 +90,17 @@ Most tools emit no notifications and this section never applies.
 
 When an MCP server emits events during a call (progress reporting, server-side
 state changes, custom events), mcpx merges them into default structured output
-under an injected `@notifications` field:
+under an injected `$notifications` field:
 
-```
+```yaml
 count: 1
-@notifications[1]{method,params}:
-  notifications/progress,{progressToken:"...",progress:3,total:4,message:"step 3"}
+$notifications:
+  - method: notifications/progress
+    params:
+      progressToken: "..."
+      progress: 3
+      total: 4
+      message: step 3
 ```
 
 For non-JSON text, binary, or mixed content, mcpx falls back to the trailing
@@ -103,7 +108,7 @@ sentinel line:
 
 ```
 <tool result lines>
-@notification: [{"method":"notifications/progress","params":{...}}]
+$notification: [{"method":"notifications/progress","params":{...}}]
 ```
 
 Notifications are objects with these fields:
@@ -130,14 +135,14 @@ trailing sentinel line is replaced by a JSON envelope on stdout:
 { "result": <tool-result>, "notifications": [ ... ] }
 ```
 
-Text results keep the trailing `@notification:` line even under `--raw`,
+Text results keep the trailing `$notification:` line even under `--raw`,
 because text content is not JSON and wrapping it would break consumers.
 
 Practical guidance:
 
 - If your task does not depend on progress or server events, ignore notifications.
-- Check `@notifications`, the sentinel line, or the raw envelope only when present.
-- Do not assume notifications appear; the common case is no `@notification:` at all.
+- Check `$notifications`, the sentinel line, or the raw envelope only when present.
+- Do not assume notifications appear; the common case is no `$notification:` at all.
 
 ## Project-Local Skills
 

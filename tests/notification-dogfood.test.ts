@@ -2,8 +2,8 @@ import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { decode } from "@toon-format/toon";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { parse as parseYaml } from "yaml";
 
 const mainPath = path.join(import.meta.dir, "..", "src", "main.ts");
 const fixturePath = path.join(import.meta.dir, "fixtures", "notification-mcp-server.mjs");
@@ -40,13 +40,13 @@ describe("notification fixture dogfood", () => {
       tools: 5,
     });
 
-    const progress = decode(
+    const progress = parseYaml(
       (await runMcpx(["notification-fixture", "progress-stream", "--count", "4"])).stdout,
     ) as Record<string, unknown>;
     expect(progress).toMatchObject({
       tool: "progress-stream",
       count: 4,
-      "@notifications": [
+      $notifications: [
         {
           method: "notifications/progress",
           params: expect.objectContaining({ progress: 1, total: 4, message: "step 1" }),
@@ -95,10 +95,10 @@ describe("notification fixture dogfood", () => {
       },
     ]);
 
-    const flood = decode(
+    const flood = parseYaml(
       (await runMcpx(["notification-fixture", "flood-notify"])).stdout,
     ) as Record<string, unknown>;
-    const oversizeMessage = String(flood["@notifications"]);
+    const oversizeMessage = String(flood.$notifications);
     expect(oversizeMessage).toMatch(
       /^notifications oversize, saved to .+mcpx-notifications-.+\.json$/,
     );

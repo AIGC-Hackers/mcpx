@@ -96,7 +96,7 @@ export async function runMcpx(argv: string[], cwd: string, mainPath: string): Pr
     description: "Global MCP registry and agent-facing command surface.",
     globals: globalInput,
     context: (globals) => {
-      return { output: globals.raw ? "raw" : "toon" };
+      return { output: globals.raw ? "raw" : "yaml" };
     },
     schemaExplorer: createDefaultSchemaExplorer({
       selectionDepth: 2,

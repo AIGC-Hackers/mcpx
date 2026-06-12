@@ -202,7 +202,7 @@ Tool calls use a 5 minute request timeout by default. Set
 mcpx optimizes output for humans and agents by default:
 
 - text MCP content is printed directly
-- JSON text content is rendered as TOON
+- JSON text content is rendered as YAML
 - non-text content is saved to a temporary file and printed as `file saved <path>`
 
 Use `--raw` to preserve raw server text output:

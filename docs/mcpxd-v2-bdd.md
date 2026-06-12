@@ -298,37 +298,37 @@ Rationale: per-call buffer scoping. Long-lived subscription belongs to V3+.
 
 ## Feature: Output Rendering
 
-CLI handles `response.notifications` rendering. Default output prefers one merged TOON document
+CLI handles `response.notifications` rendering. Default output prefers one merged YAML document
 when the result can be viewed as a single object.
 
 **Scenario: default structured output merges notifications**
 
 - Given a tool call returned `structuredContent` and non-empty notifications
-- And output mode is default TOON
-- Then CLI prints one TOON object to stdout
-- And the object includes `@notifications: [...]`
+- And output mode is default YAML
+- Then CLI prints one YAML object to stdout
+- And the object includes `$notifications: [...]`
 - And no trailing sentinel line is emitted
 
 **Scenario: default JSON text output merges notifications**
 
 - Given a tool call returned exactly one text content item
 - And that text parses as a JSON object
-- And output mode is default TOON
-- Then CLI parses the JSON text and prints one TOON object
-- And the object includes `@notifications: [...]`
+- And output mode is default YAML
+- Then CLI parses the JSON text and prints one YAML object
+- And the object includes `$notifications: [...]`
 
 **Scenario: default fallback output keeps trailing sentinel**
 
 - Given a tool call returned non-JSON text, binary, or mixed content with notifications
-- And output mode is default TOON
+- And output mode is default YAML
 - Then CLI prints the normal result rendering to stdout
-- And appends a final line: `@notification: [{...}, {...}]`
+- And appends a final line: `$notification: [{...}, {...}]`
 
 **Scenario: oversize notifications render as a saved-file message**
 
 - Given daemon response notifications is `[ { "method": "$oversize", "params": { "savedTo": P } } ]`
 - And default output can merge into an object
-- Then the merged object includes `@notifications: "notifications oversize, saved to P"`
+- Then the merged object includes `$notifications: "notifications oversize, saved to P"`
 - When default output cannot merge into an object
 - Then the fallback sentinel line reports the same saved-file path
 
@@ -345,7 +345,7 @@ when the result can be viewed as a single object.
 - Given a tool call returned text content with notifications
 - And the user passed `--raw`
 - Then CLI prints the text content to stdout
-- And appends a final line: `@notification: [...]`
+- And appends a final line: `$notification: [...]`
 
 **Scenario: stderr is never used for notifications**
 
@@ -355,14 +355,14 @@ when the result can be viewed as a single object.
 
 ### Sentinel Defaults and Escalation
 
-Default sentinel: `@notification:`.
+Default sentinel: `$notification:`.
 
 Escalation path, recorded for future use but not implemented in V2 initial release:
 
 ```text
-L0 (default): @notification:
-L1:           @@@notification:
-L2:           \x1e@notification:
+L0 (default): $notification:
+L1:           $$$notification:
+L2:           \x1e$notification:
 ```
 
 L1 / L2 are triggered only if a real-world collision is reported.
@@ -385,7 +385,7 @@ V2 protocol negotiation is identical to V1 (single integer version, no per-featu
 - HTTP server key derivation: same URL + different auth ref -> different keys; same URL + rotated token value -> same key.
 - Notification aggregation: progress with N=1, N=2, N=10, mixed methods.
 - Buffer cap: oversize file fallback marker inserted at cap.
-- Notification rendering for merged default TOON / fallback sentinel / raw structured / raw text.
+- Notification rendering for merged default YAML / fallback sentinel / raw structured / raw text.
 
 ### Integration tests
 

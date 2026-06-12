@@ -31,8 +31,8 @@ bun src/main.ts notification-fixture progress-stream --count 4
 
 Expected:
 
-- Output is one TOON object with `tool: progress-stream`.
-- `@notifications` contains the first and last progress entries.
+- Output is one YAML object with `tool: progress-stream`.
+- `$notifications` contains the first and last progress entries.
 - The last progress entry has `aggregatedCount: 2`.
 
 `notify-tools-changed` emits `notifications/tools/list_changed` during a call.
@@ -64,7 +64,7 @@ bun src/main.ts notification-fixture flood-notify
 
 Expected:
 
-- Output includes `@notifications: notifications oversize, saved to <path>`.
+- Output includes `$notifications: notifications oversize, saved to <path>`.
 - The saved JSON file exists and contains the full notifications array.
 
 `idle-tools-changed` emits `notifications/tools/list_changed` after the current call has completed.

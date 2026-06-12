@@ -3,13 +3,13 @@ import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { decode, encode } from "@toon-format/toon";
+import { stringify as stringifyYaml } from "yaml";
 import type { DaemonOutputEnvelope } from "./daemon-result";
 import { unwrapDaemonOutput } from "./daemon-result";
 import type { McpNotification } from "./daemon-protocol";
 
 export type McpxContext = {
-  output: "toon" | "raw";
+  output: "yaml" | "raw";
 };
 
 type McpContent = Record<string, unknown> & {
@@ -56,7 +56,7 @@ export async function printOutput(value: unknown, context: McpxContext): Promise
     return;
   }
 
-  console.log(encode(value));
+  console.log(formatYaml(value));
 }
 
 async function printDaemonOutput(value: DaemonOutputEnvelope, context: McpxContext): Promise<void> {
@@ -66,11 +66,12 @@ async function printDaemonOutput(value: DaemonOutputEnvelope, context: McpxConte
     return;
   }
 
-  if (context.output === "toon") {
-    // #15 only merges object-shaped results; text/binary normalization is a follow-up.
+  if (context.output === "yaml") {
+    // Notifications are only merged when the result is already object-shaped;
+    // arbitrary text stays untouched so existing text consumers are not wrapped.
     const resultObject = resultAsMergeableObject(value.result);
     if (resultObject) {
-      console.log(encode(mergeNotifications(resultObject, notifications)));
+      console.log(formatYaml(mergeNotifications(resultObject, notifications)));
       return;
     }
   }
@@ -83,7 +84,7 @@ async function printDaemonOutput(value: DaemonOutputEnvelope, context: McpxConte
 
 function formatNotifications(notifications: McpNotification[]): string[] {
   if (notifications.length === 0) return [];
-  return [`@notification: ${JSON.stringify(notifications)}`];
+  return [`$notification: ${JSON.stringify(notificationOutputValue(notifications))}`];
 }
 
 function normalizeNotificationForOutput(notification: McpNotification): McpNotification {
@@ -114,7 +115,7 @@ function mergeNotifications(
 ): Record<string, unknown> {
   return {
     ...result,
-    "@notifications": notificationOutputValue(notifications),
+    $notifications: notificationOutputValue(notifications),
   };
 }
 
@@ -136,7 +137,7 @@ function isStructuredDaemonResult(value: unknown): boolean {
 
 export async function formatMcpContent(
   content: McpContent[],
-  outputFormat: McpxContext["output"] = "toon",
+  outputFormat: McpxContext["output"] = "yaml",
 ): Promise<string[]> {
   const output: string[] = [];
 
@@ -165,7 +166,7 @@ function formatStructuredContent(result: McpToolResult, output: McpxContext["out
       ? { structuredContent: result.structuredContent, _meta: result._meta }
       : result.structuredContent;
 
-  return output === "raw" ? JSON.stringify(value, null, 2) : encode(value);
+  return output === "raw" ? JSON.stringify(value, null, 2) : formatYaml(value);
 }
 
 function formatTextContent(text: string, output: McpxContext["output"]): string {
@@ -173,12 +174,7 @@ function formatTextContent(text: string, output: McpxContext["output"]): string 
 
   const parsedJson = parseJsonText(text);
   if (parsedJson !== undefined) {
-    return encode(parsedJson);
-  }
-
-  const parsedToon = parseToonText(text);
-  if (parsedToon !== undefined) {
-    return text;
+    return formatYaml(parsedJson);
   }
 
   return text;
@@ -189,16 +185,6 @@ function parseJsonText(text: string): unknown | undefined {
   if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return undefined;
   try {
     return JSON.parse(trimmed);
-  } catch {
-    return undefined;
-  }
-}
-
-function parseToonText(text: string): unknown | undefined {
-  const trimmed = text.trim();
-  if (!trimmed.includes(":")) return undefined;
-  try {
-    return decode(trimmed);
   } catch {
     return undefined;
   }
@@ -236,7 +222,11 @@ function formatResourceLink(content: McpContent, outputFormat: McpxContext["outp
     mimeType: content.mimeType,
     size: content.size,
   });
-  return outputFormat === "raw" ? JSON.stringify(link, null, 2) : encode(link);
+  return outputFormat === "raw" ? JSON.stringify(link, null, 2) : formatYaml(link);
+}
+
+function formatYaml(value: unknown): string {
+  return stringifyYaml(value).trimEnd();
 }
 
 function contentBytes(content: McpContent): Buffer {

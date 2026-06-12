@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
+import { parse as parseYaml } from "yaml";
 
-import { decode } from "@toon-format/toon";
 import { formatMcpContent, printOutput } from "../src/output";
 import { __test } from "../src/router";
 
@@ -8,7 +8,7 @@ describe("output format", () => {
   it("prints text MCP content directly by default", async () => {
     const log = captureConsoleLog();
     try {
-      await printOutput({ content: [{ type: "text", text: "ok" }] }, { output: "toon" });
+      await printOutput({ content: [{ type: "text", text: "ok" }] }, { output: "yaml" });
 
       expect(log.calls[0]?.[0]).toBe("ok");
     } finally {
@@ -16,7 +16,7 @@ describe("output format", () => {
     }
   });
 
-  it("prints JSON text MCP content as TOON by default", async () => {
+  it("prints JSON text MCP content as YAML by default", async () => {
     await expect(
       formatMcpContent([{ type: "text", text: '{"name":"Ada","age":30}' }]),
     ).resolves.toEqual(["name: Ada\nage: 30"]);
@@ -44,7 +44,7 @@ describe("output format", () => {
     try {
       await printOutput(
         { content: [{ type: "text", text: "failed" }], isError: true },
-        { output: "toon" },
+        { output: "yaml" },
       );
 
       expect(log.calls).toEqual([]);
@@ -65,10 +65,13 @@ describe("output format", () => {
           content: [{ type: "text", text: "human" }],
           structuredContent: { pages: [{ pageId: 1 }], count: 1 },
         },
-        { output: "toon" },
+        { output: "yaml" },
       );
 
-      expect(log.calls[0]?.[0]).toBe("pages[1]{pageId}:\n  1\ncount: 1");
+      expect(parseYaml(String(log.calls[0]?.[0]))).toEqual({
+        pages: [{ pageId: 1 }],
+        count: 1,
+      });
     } finally {
       log.restore();
     }
@@ -93,7 +96,7 @@ describe("output format", () => {
     }
   });
 
-  it("prints TOON text MCP content as raw text when --raw is selected", async () => {
+  it("prints structured-looking text MCP content as raw text when --raw is selected", async () => {
     await expect(
       formatMcpContent([{ type: "text", text: '"0":\n  id: 1\n  name: Drawout' }], "raw"),
     ).resolves.toEqual(['"0":\n  id: 1\n  name: Drawout']);
@@ -119,19 +122,19 @@ describe("output format", () => {
           result: { content: [{ type: "text", text: "ok" }] },
           notifications: [{ method: "notifications/tools/list_changed" }],
         },
-        { output: "toon" },
+        { output: "yaml" },
       );
 
       expect(log.calls.map((call) => call[0])).toEqual([
         "ok",
-        '@notification: [{"method":"notifications/tools/list_changed"}]',
+        '$notification: [{"method":"notifications/tools/list_changed"}]',
       ]);
     } finally {
       log.restore();
     }
   });
 
-  it("merges structured daemon notifications into the default TOON object", async () => {
+  it("merges structured daemon notifications into the default YAML object", async () => {
     const log = captureConsoleLog();
     try {
       await printOutput(
@@ -140,19 +143,19 @@ describe("output format", () => {
           result: { structuredContent: { count: 1 } },
           notifications: [{ method: "notifications/tools/list_changed" }],
         },
-        { output: "toon" },
+        { output: "yaml" },
       );
 
-      expect(decode(String(log.calls[0]?.[0]))).toEqual({
+      expect(parseYaml(String(log.calls[0]?.[0]))).toEqual({
         count: 1,
-        "@notifications": [{ method: "notifications/tools/list_changed" }],
+        $notifications: [{ method: "notifications/tools/list_changed" }],
       });
     } finally {
       log.restore();
     }
   });
 
-  it("merges JSON text daemon notifications into the default TOON object", async () => {
+  it("merges JSON text daemon notifications into the default YAML object", async () => {
     const log = captureConsoleLog();
     try {
       await printOutput(
@@ -161,19 +164,19 @@ describe("output format", () => {
           result: { content: [{ type: "text", text: '{"count":1}' }] },
           notifications: [{ method: "notifications/custom/event", params: { ok: true } }],
         },
-        { output: "toon" },
+        { output: "yaml" },
       );
 
-      expect(decode(String(log.calls[0]?.[0]))).toEqual({
+      expect(parseYaml(String(log.calls[0]?.[0]))).toEqual({
         count: 1,
-        "@notifications": [{ method: "notifications/custom/event", params: { ok: true } }],
+        $notifications: [{ method: "notifications/custom/event", params: { ok: true } }],
       });
     } finally {
       log.restore();
     }
   });
 
-  it("renders oversize notifications as a saved-file message in default TOON output", async () => {
+  it("renders oversize notifications as a saved-file message in default YAML output", async () => {
     const log = captureConsoleLog();
     try {
       await printOutput(
@@ -184,12 +187,12 @@ describe("output format", () => {
             { method: "$oversize", params: { savedTo: "/tmp/mcpx-notifications-a.json" } },
           ],
         },
-        { output: "toon" },
+        { output: "yaml" },
       );
 
-      expect(decode(String(log.calls[0]?.[0]))).toEqual({
+      expect(parseYaml(String(log.calls[0]?.[0]))).toEqual({
         count: 1,
-        "@notifications": "notifications oversize, saved to /tmp/mcpx-notifications-a.json",
+        $notifications: "notifications oversize, saved to /tmp/mcpx-notifications-a.json",
       });
     } finally {
       log.restore();
@@ -275,18 +278,22 @@ describe("output format", () => {
   });
 
   it("prints resource links as metadata instead of saving fake binary content", async () => {
-    await expect(
-      formatMcpContent([
-        {
-          type: "resource_link",
-          uri: "file:///tmp/report.md",
-          name: "report",
-          mimeType: "text/markdown",
-        },
-      ]),
-    ).resolves.toEqual([
-      'type: resource_link\nuri: "file:///tmp/report.md"\nname: report\nmimeType: text/markdown',
+    const [line] = await formatMcpContent([
+      {
+        type: "resource_link",
+        uri: "file:///tmp/report.md",
+        name: "report",
+        mimeType: "text/markdown",
+      },
     ]);
+
+    if (line === undefined) throw new Error("Expected one resource link output line.");
+    expect(parseYaml(line)).toEqual({
+      type: "resource_link",
+      uri: "file:///tmp/report.md",
+      name: "report",
+      mimeType: "text/markdown",
+    });
   });
 });
 

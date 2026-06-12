@@ -66,12 +66,12 @@ describe("notification buffer", () => {
             } as never,
           ],
         }),
-        { output: "toon" },
+        { output: "yaml" },
       );
 
       expect(log.calls.map((call) => call[0])).toEqual([
         "ok",
-        '@notification: [{"method":"notifications/custom/event","params":{"ok":true}}]',
+        '$notification: [{"method":"notifications/custom/event","params":{"ok":true}}]',
       ]);
     } finally {
       log.restore();

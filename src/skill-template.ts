@@ -96,12 +96,17 @@ JSON
 
 Most tool calls emit no notifications and this section never applies. When an
 MCP server pushes events during a call (progress, schema changes, custom
-events), mcpx merges them into default structured output under \`@notifications\`:
+events), mcpx merges them into default structured output under \`$notifications\`:
 
-\`\`\`
+\`\`\`yaml
 count: 1
-@notifications[1]{method,params}:
-  notifications/progress,{progressToken:"...",progress:3,total:4,message:"step 3"}
+$notifications:
+  - method: notifications/progress
+    params:
+      progressToken: "..."
+      progress: 3
+      total: 4
+      message: step 3
 \`\`\`
 
 For non-JSON text, binary, or mixed content, mcpx falls back to a trailing
@@ -109,7 +114,7 @@ sentinel line:
 
 \`\`\`
 <tool result lines>
-@notification: [{"method":"notifications/progress","params":{...}}]
+$notification: [{"method":"notifications/progress","params":{...}}]
 \`\`\`
 
 Each entry has \`method\` plus method-specific \`params\`. Special cases:
@@ -126,7 +131,7 @@ sentinel line is replaced by a JSON envelope:
 \`\`\`
 
 Ignore notifications unless the task specifically depends on progress or
-server events. Parse only when \`@notifications\`, the sentinel line, or the raw
+server events. Parse only when \`$notifications\`, the sentinel line, or the raw
 envelope is present.
 
 Do not hand-edit MCP configuration in this project. Servers are registered in the user's global mcpx registry.
