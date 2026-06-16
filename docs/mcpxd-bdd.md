@@ -95,22 +95,22 @@ V1 uses JSON Lines over the local IPC connection:
 
 ```ts
 type ClientMessage =
-  | { op: "hello"; protocolVersion: 1; clientVersion: string }
-  | {
-      op: "call";
-      callId: string;
-      serverName: string;
-      serverKey: string;
-      server: StdioServerConfig;
-      toolName: string;
-      input: Record<string, unknown>;
-    }
-  | { op: "status" }
-  | { op: "stop" };
+	| { op: 'hello'; protocolVersion: 1; clientVersion: string }
+	| {
+			op: 'call'
+			callId: string
+			serverName: string
+			serverKey: string
+			server: StdioServerConfig
+			toolName: string
+			input: Record<string, unknown>
+	  }
+	| { op: 'status' }
+	| { op: 'stop' }
 
 type DaemonMessage =
-  | { ok: true; protocolVersion?: 1; result?: unknown }
-  | { ok: false; error: { code: string; message: string } };
+	| { ok: true; protocolVersion?: 1; result?: unknown }
+	| { ok: false; error: { code: string; message: string } }
 ```
 
 If this protocol needs binary payloads later, replace JSON Lines with

@@ -1,77 +1,78 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from 'bun:test'
 
-import { buildServerKey } from "../src/daemon-protocol";
-import type { HttpServerConfig } from "../src/types";
+import type { HttpServerConfig } from '../src/types'
 
-describe("daemon protocol", () => {
-  it("keeps HTTP server keys stable across resolved token values", () => {
-    const server: HttpServerConfig = {
-      url: "https://mcp.example.com/mcp",
-      headers: { Authorization: "Bearer old" },
-      auth: {
-        kind: "bearer",
-        credentials: [{ kind: "env", name: "MCP_TOKEN" }],
-        strategy: "round-robin",
-        confidence: "configured",
-      },
-    };
-    const rotated: HttpServerConfig = {
-      ...server,
-      headers: { Authorization: "Bearer new" },
-    };
+import { buildServerKey } from '../src/daemon-protocol'
 
-    expect(buildServerKey(rotated)).toBe(buildServerKey(server));
-  });
+describe('daemon protocol', () => {
+	it('keeps HTTP server keys stable across resolved token values', () => {
+		const server: HttpServerConfig = {
+			url: 'https://mcp.example.com/mcp',
+			headers: { Authorization: 'Bearer old' },
+			auth: {
+				kind: 'bearer',
+				credentials: [{ kind: 'env', name: 'MCP_TOKEN' }],
+				strategy: 'round-robin',
+				confidence: 'configured',
+			},
+		}
+		const rotated: HttpServerConfig = {
+			...server,
+			headers: { Authorization: 'Bearer new' },
+		}
 
-  it("isolates HTTP server keys by auth reference", () => {
-    const first: HttpServerConfig = {
-      url: "https://mcp.example.com/mcp",
-      auth: {
-        kind: "bearer",
-        credentials: [{ kind: "env", name: "FIRST_TOKEN" }],
-        strategy: "round-robin",
-        confidence: "configured",
-      },
-    };
-    const second: HttpServerConfig = {
-      ...first,
-      auth: {
-        kind: "bearer",
-        credentials: [{ kind: "env", name: "SECOND_TOKEN" }],
-        strategy: "round-robin",
-        confidence: "configured",
-      },
-    };
+		expect(buildServerKey(rotated)).toBe(buildServerKey(server))
+	})
 
-    expect(buildServerKey(second)).not.toBe(buildServerKey(first));
-  });
+	it('isolates HTTP server keys by auth reference', () => {
+		const first: HttpServerConfig = {
+			url: 'https://mcp.example.com/mcp',
+			auth: {
+				kind: 'bearer',
+				credentials: [{ kind: 'env', name: 'FIRST_TOKEN' }],
+				strategy: 'round-robin',
+				confidence: 'configured',
+			},
+		}
+		const second: HttpServerConfig = {
+			...first,
+			auth: {
+				kind: 'bearer',
+				credentials: [{ kind: 'env', name: 'SECOND_TOKEN' }],
+				strategy: 'round-robin',
+				confidence: 'configured',
+			},
+		}
 
-  it("isolates HTTP server keys by bearer credential list", () => {
-    const first: HttpServerConfig = {
-      url: "https://mcp.example.com/mcp",
-      auth: {
-        kind: "bearer",
-        credentials: [
-          { kind: "env", name: "FIRST_TOKEN" },
-          { kind: "env", name: "SECOND_TOKEN" },
-        ],
-        strategy: "round-robin",
-        confidence: "configured",
-      },
-    };
-    const second: HttpServerConfig = {
-      ...first,
-      auth: {
-        kind: "bearer",
-        credentials: [
-          { kind: "env", name: "FIRST_TOKEN" },
-          { kind: "env", name: "THIRD_TOKEN" },
-        ],
-        strategy: "round-robin",
-        confidence: "configured",
-      },
-    };
+		expect(buildServerKey(second)).not.toBe(buildServerKey(first))
+	})
 
-    expect(buildServerKey(second)).not.toBe(buildServerKey(first));
-  });
-});
+	it('isolates HTTP server keys by bearer credential list', () => {
+		const first: HttpServerConfig = {
+			url: 'https://mcp.example.com/mcp',
+			auth: {
+				kind: 'bearer',
+				credentials: [
+					{ kind: 'env', name: 'FIRST_TOKEN' },
+					{ kind: 'env', name: 'SECOND_TOKEN' },
+				],
+				strategy: 'round-robin',
+				confidence: 'configured',
+			},
+		}
+		const second: HttpServerConfig = {
+			...first,
+			auth: {
+				kind: 'bearer',
+				credentials: [
+					{ kind: 'env', name: 'FIRST_TOKEN' },
+					{ kind: 'env', name: 'THIRD_TOKEN' },
+				],
+				strategy: 'round-robin',
+				confidence: 'configured',
+			},
+		}
+
+		expect(buildServerKey(second)).not.toBe(buildServerKey(first))
+	})
+})

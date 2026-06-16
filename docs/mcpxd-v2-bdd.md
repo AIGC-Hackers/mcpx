@@ -47,16 +47,16 @@ HTTP key:
 
 ```ts
 hash({
-  type: "http",
-  url,
-  authKind: auth?.kind,
-  authRef:
-    auth?.kind === "bearer"
-      ? auth.credentials.map(ref)
-      : auth?.kind === "oauth-token"
-        ? auth.tokenKey
-        : null,
-});
+	type: 'http',
+	url,
+	authKind: auth?.kind,
+	authRef:
+		auth?.kind === 'bearer'
+			? auth.credentials.map(ref)
+			: auth?.kind === 'oauth-token'
+				? auth.tokenKey
+				: null,
+})
 ```
 
 Resolved runtime headers (Authorization token value) do not participate in the key. Token refresh therefore does not fragment sessions; `evictSession` is the explicit mechanism.
@@ -64,52 +64,56 @@ Resolved runtime headers (Authorization token value) do not participate in the k
 ### IPC Protocol
 
 ```ts
-const DAEMON_PROTOCOL_VERSION = 2;
+const DAEMON_PROTOCOL_VERSION = 2
 
 type ClientMessage =
-  | { op: "hello"; protocolVersion: 2; clientVersion: string }
-  | {
-      op: "listTools";
-      callId: string;
-      serverName: string;
-      serverKey: string;
-      server: ServerConfig; // stdio | http
-      headers?: Record<string, string>;
-    }
-  | {
-      op: "call";
-      callId: string;
-      serverName: string;
-      serverKey: string;
-      server: ServerConfig;
-      headers?: Record<string, string>;
-      toolName: string;
-      input: Record<string, unknown>;
-      notificationMode?: "buffer" | "discard";
-    }
-  | { op: "status" }
-  | { op: "stop" }
-  | {
-      op: "evictSession";
-      serverKey: string;
-      reason?: "auth-refreshed" | "unauthorized" | "manual";
-    };
+	| { op: 'hello'; protocolVersion: 2; clientVersion: string }
+	| {
+			op: 'listTools'
+			callId: string
+			serverName: string
+			serverKey: string
+			server: ServerConfig // stdio | http
+			headers?: Record<string, string>
+	  }
+	| {
+			op: 'call'
+			callId: string
+			serverName: string
+			serverKey: string
+			server: ServerConfig
+			headers?: Record<string, string>
+			toolName: string
+			input: Record<string, unknown>
+			notificationMode?: 'buffer' | 'discard'
+	  }
+	| { op: 'status' }
+	| { op: 'stop' }
+	| {
+			op: 'evictSession'
+			serverKey: string
+			reason?: 'auth-refreshed' | 'unauthorized' | 'manual'
+	  }
 
 type DaemonMessage =
-  | {
-      ok: true;
-      protocolVersion?: 2;
-      result?: unknown;
-      notifications?: McpNotification[];
-      toolsChanged?: boolean;
-    }
-  | { ok: false; error: { code: string; message: string } };
+	| {
+			ok: true
+			protocolVersion?: 2
+			result?: unknown
+			notifications?: McpNotification[]
+			toolsChanged?: boolean
+	  }
+	| { ok: false; error: { code: string; message: string } }
 
 type McpNotification =
-  | { method: "notifications/progress"; params: ProgressParams; aggregatedCount?: number }
-  | { method: "notifications/tools/list_changed" }
-  | { method: "$oversize"; params: { savedTo: string } }
-  | { method: string; params?: unknown };
+	| {
+			method: 'notifications/progress'
+			params: ProgressParams
+			aggregatedCount?: number
+	  }
+	| { method: 'notifications/tools/list_changed' }
+	| { method: '$oversize'; params: { savedTo: string } }
+	| { method: string; params?: unknown }
 ```
 
 JSON Lines transport unchanged.
@@ -118,18 +122,18 @@ JSON Lines transport unchanged.
 
 ```ts
 type ServerStatus = {
-  serverKey: string;
-  transport: "stdio" | "http";
-  labels: string[];
-  pid?: number | null;
-  url?: string;
-  activeCalls: number;
-  queuedCalls: number;
-  idleMs: number;
-  evictCount: number;
-  hasRetainedSessionId: boolean;
-  sessionIdHash?: string;
-};
+	serverKey: string
+	transport: 'stdio' | 'http'
+	labels: string[]
+	pid?: number | null
+	url?: string
+	activeCalls: number
+	queuedCalls: number
+	idleMs: number
+	evictCount: number
+	hasRetainedSessionId: boolean
+	sessionIdHash?: string
+}
 ```
 
 The raw session id is never exposed externally. `sessionIdHash` is for diagnostic correlation only.
@@ -273,7 +277,10 @@ Aggregation only applies to `notifications/progress` as defined by MCP `2025-11-
 - And replaces the daemon response notifications with:
 
 ```json
-{ "method": "$oversize", "params": { "savedTo": "/tmp/mcpx-notifications-<hash>.json" } }
+{
+	"method": "$oversize",
+	"params": { "savedTo": "/tmp/mcpx-notifications-<hash>.json" }
+}
 ```
 
 - And the hash is derived from `sha256(JSON.stringify(notifications))`

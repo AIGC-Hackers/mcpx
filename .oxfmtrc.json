@@ -1,12 +1,27 @@
 {
-	"$schema": "./node_modules/oxfmt/configuration_schema.json",
-	"printWidth": 100,
-	"tabWidth": 2,
-	"useTabs": false,
-	"singleQuote": false,
-	"semi": true,
-	"trailingComma": "all",
-	"bracketSpacing": true,
-	"arrowParens": "always",
-	"endOfLine": "lf"
+	"$schema": "https://raw.githubusercontent.com/oxc-project/oxc/refs/heads/main/npm/oxfmt/configuration_schema.json",
+	"printWidth": 80,
+	"singleQuote": true,
+	"semi": false,
+	"useTabs": true,
+	"jsdoc": true,
+	"sortImports": {
+		"groups": [
+			["type-builtin", "type-external"],
+			["builtin", "external"],
+			["type-internal", "type-subpath", "internal", "subpath"],
+			["type-parent", "type-sibling", "type-index"],
+			["parent", "sibling", "index"],
+			["side_effect", "side_effect_style", "style"]
+		]
+	},
+	"ignorePatterns": [
+		"node_modules",
+		"externals",
+		"dist",
+		"*.lock",
+		"**/*.gen.ts",
+		"**/worker-configuration.d.ts",
+		"convex/_generated"
+	]
 }

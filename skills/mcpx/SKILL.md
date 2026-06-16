@@ -107,7 +107,7 @@ count: 1
 $notifications:
   - method: notifications/progress
     params:
-      progressToken: "..."
+      progressToken: '...'
       progress: 3
       total: 4
       message: step 3

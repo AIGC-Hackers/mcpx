@@ -1,3 +1,3 @@
-import packageJson from "../package.json" with { type: "json" };
+import packageJson from '../package.json' with { type: 'json' }
 
-export const MCPX_VERSION = packageJson.version;
+export const MCPX_VERSION = packageJson.version
