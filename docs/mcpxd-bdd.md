@@ -30,9 +30,9 @@ The baseline command shape is:
 mcpx @add --name filesystem \
   --transport stdio \
   --command bunx \
-  --arg -y \
-  --arg @modelcontextprotocol/server-filesystem \
-  --arg /tmp/mcpxd-filesystem
+  --args -y \
+  --args @modelcontextprotocol/server-filesystem \
+  --args /tmp/mcpxd-filesystem
 ```
 
 Tests may use a local fixture server for precise timing, crash, and concurrency

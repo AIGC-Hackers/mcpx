@@ -12,7 +12,7 @@ bun src/main.ts @add \
   --name notification-fixture \
   --transport stdio \
   --command bun \
-  --arg tests/fixtures/notification-mcp-server.mjs
+  --args tests/fixtures/notification-mcp-server.mjs
 ```
 
 Expected output:

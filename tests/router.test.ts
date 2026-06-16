@@ -50,7 +50,7 @@ describe("router", () => {
         name: "open-design",
         transport: "stdio",
         command: "node",
-        arg: ["/path/to/cli.js", "mcp"],
+        args: ["/path/to/cli.js", "mcp"],
         env: { OPEN_DESIGN_TOKEN: "test" },
       }),
     ).toEqual({

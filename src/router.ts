@@ -35,7 +35,6 @@ type AddServerInput = {
   url?: string;
   bearer?: string | string[];
   command?: string;
-  arg?: string | string[];
   args?: string | string[];
   env?: Record<string, string>;
 };
@@ -53,7 +52,6 @@ const addInput = s(
     url: v.optional(v.pipe(v.string(), v.url(), v.description("MCP Streamable HTTP endpoint URL"))),
     bearer: v.optional(v.union([v.string(), v.array(v.string())])),
     command: v.optional(v.pipe(v.string(), v.description("Stdio MCP server command"))),
-    arg: v.optional(v.union([v.string(), v.array(v.string())])),
     args: v.optional(v.union([v.string(), v.array(v.string())])),
     env: v.optional(v.record(v.string(), v.string())),
   }),
@@ -127,7 +125,7 @@ function buildRouter(service: ProjectService): Router {
         description: "Add a global MCP server and discover its auth and tool schema.",
         examples: [
           "mcpx @add --name posthog --url https://mcp.posthog.com/mcp --bearer env:POSTHOG_AUTH_HEADER",
-          "mcpx @add --name open-design --transport stdio --command node --arg /path/to/open-design/apps/daemon/dist/cli.js --arg mcp",
+          "mcpx @add --name open-design --transport stdio --command node --args /path/to/open-design/apps/daemon/dist/cli.js --args mcp",
         ],
       })
       .input(addInput),
@@ -367,7 +365,7 @@ function addDiscoverOptions(name: string, input: AddServerInput) {
       transport: "stdio" as const,
       command: input.command,
     };
-    const args = normalizeStringList(input.arg ?? input.args);
+    const args = normalizeStringList(input.args);
     if (args) options.args = args;
     if (input.env) options.env = input.env;
     return options;

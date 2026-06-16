@@ -140,7 +140,7 @@ names:
 ```bash
 mcpx @add --name <server> --url <mcp-url>
 mcpx @add --name <server> --url <mcp-url> --bearer env:<TOKEN_ENV>
-mcpx @add --name <server> --transport stdio --command <command> --arg <arg>
+mcpx @add --name <server> --transport stdio --command <command> --args <arg>
 mcpx @remove --name <server>
 mcpx @refresh
 mcpx @daemon status
@@ -163,7 +163,7 @@ mcpx @add --name posthog --url https://mcp.posthog.com/mcp \
 ```
 
 Multiple bearer credentials use round-robin selection by default. Stdio servers
-are local process registrations; pass each process argument with `--arg`, or use
+are local process registrations; pass each process argument with `--args`, or use
 `--input` when you need structured `args` / `env`:
 
 ```bash

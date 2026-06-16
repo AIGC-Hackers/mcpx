@@ -29,7 +29,7 @@ describe("notification fixture dogfood", () => {
       "stdio",
       "--command",
       process.execPath,
-      "--arg",
+      "--args",
       fixturePath,
       "--raw",
     ]);

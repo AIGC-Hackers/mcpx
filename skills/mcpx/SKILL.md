@@ -78,7 +78,7 @@ mcpx supports two MCP transports, both configured through `mcpx @add`:
 
 - **HTTP** — default. Remote MCP services like PostHog or Sentry.
 - **Stdio** — local processes started by mcpx, for example
-  `mcpx @add --name fs --transport stdio --command bunx --arg -y --arg @modelcontextprotocol/server-filesystem --arg /tmp/fs-sandbox`.
+  `mcpx @add --name fs --transport stdio --command bunx --args -y --args @modelcontextprotocol/server-filesystem --args /tmp/fs-sandbox`.
 
 HTTP bearer auth uses `--bearer`. Prefer `env:NAME` so secrets stay out of the
 registry. Repeat `--bearer` for multiple credentials; mcpx uses round-robin by
