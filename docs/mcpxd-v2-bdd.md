@@ -50,7 +50,12 @@ hash({
   type: "http",
   url,
   authKind: auth?.kind,
-  authRef: auth?.env ?? auth?.tokenKey ?? null,
+  authRef:
+    auth?.kind === "bearer"
+      ? auth.credentials.map(ref)
+      : auth?.kind === "oauth-token"
+        ? auth.tokenKey
+        : null,
 });
 ```
 
@@ -142,19 +147,25 @@ The raw session id is never exposed externally. `sessionIdHash` is for diagnosti
 - Then the same `Client` is reused without reconstructing transport
 - And any `mcp-session-id` issued by the server is preserved across calls
 
-**Scenario: HTTP server key isolates per auth reference**
+**Scenario: HTTP server key isolates per bearer credential list**
 
-- Given two registry entries with the same URL but different `auth.env` references
+- Given two registry entries with the same URL but different bearer credential references
 - When the user calls tools on each
 - Then two distinct sessions exist in the daemon pool
 
 **Scenario: HTTP server key ignores resolved token value**
 
-- Given an HTTP server uses `bearer` auth from env `FOO_TOKEN`
+- Given an HTTP server uses `bearer` auth from `env:FOO_TOKEN`
 - And the env value is rotated mid-day
 - When subsequent calls happen
 - Then the server key is unchanged
 - And the same session entry is used, subject to eviction policy
+
+**Scenario: HTTP bearer credentials round-robin**
+
+- Given an HTTP server has bearer credentials `env:FOO_TOKEN_A` and `env:FOO_TOKEN_B`
+- When the user makes consecutive HTTP tool calls
+- Then mcpx advances a local cursor and alternates the resolved Authorization header
 
 ## Feature: OAuth Token Refresh Eviction
 

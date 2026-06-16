@@ -7,9 +7,16 @@ export type AuthDiscovery =
       authorizationServers?: string[];
       scopesSupported?: string[];
     }
-  | { kind: "bearer"; source: "env"; env: string; confidence: "configured" }
+  | {
+      kind: "bearer";
+      credentials: BearerCredential[];
+      strategy: "round-robin";
+      confidence: "configured";
+    }
   | { kind: "oauth-token"; tokenKey: string; confidence: "confirmed" }
   | { kind: "unknown"; reason: string };
+
+export type BearerCredential = { kind: "env"; name: string } | { kind: "literal"; value: string };
 
 export type OAuthServerMetadata = {
   issuer: string;

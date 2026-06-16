@@ -74,4 +74,19 @@ describe("router", () => {
       url: "https://mcp.posthog.com/mcp",
     });
   });
+
+  it("builds HTTP discovery options with repeatable bearer credentials", () => {
+    expect(
+      __test.addDiscoverOptions("posthog", {
+        name: "posthog",
+        url: "https://mcp.posthog.com/mcp",
+        bearer: ["env:POSTHOG_TOKEN_A", "env:POSTHOG_TOKEN_B"],
+      }),
+    ).toEqual({
+      name: "posthog",
+      transport: "http",
+      url: "https://mcp.posthog.com/mcp",
+      bearer: ["env:POSTHOG_TOKEN_A", "env:POSTHOG_TOKEN_B"],
+    });
+  });
 });

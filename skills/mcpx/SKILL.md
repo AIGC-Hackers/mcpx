@@ -80,6 +80,16 @@ mcpx supports two MCP transports, both configured through `mcpx @add`:
 - **Stdio** — local processes started by mcpx, for example
   `mcpx @add --name fs --transport stdio --command bunx --arg -y --arg @modelcontextprotocol/server-filesystem --arg /tmp/fs-sandbox`.
 
+HTTP bearer auth uses `--bearer`. Prefer `env:NAME` so secrets stay out of the
+registry. Repeat `--bearer` for multiple credentials; mcpx uses round-robin by
+default:
+
+```bash
+mcpx @add --name posthog --url https://mcp.posthog.com/mcp \
+  --bearer env:POSTHOG_TOKEN_A \
+  --bearer env:POSTHOG_TOKEN_B
+```
+
 After registration both behave identically from the agent's view: same schema
 discovery, same `mcpx <server> <tool> --input ...` call pattern, same output
 shape. You do not need to differentiate when calling tools.

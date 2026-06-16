@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { bearerAuthRef } from "./bearer";
 import type { ServerConfig } from "./types";
 import { MCPX_VERSION } from "./version";
 
@@ -100,7 +101,7 @@ export function buildServerKey(server: ServerConfig): string {
           authKind: server.auth?.kind ?? null,
           authRef:
             server.auth?.kind === "bearer"
-              ? server.auth.env
+              ? bearerAuthRef(server.auth)
               : server.auth?.kind === "oauth-token"
                 ? server.auth.tokenKey
                 : null,

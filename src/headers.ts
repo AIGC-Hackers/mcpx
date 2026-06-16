@@ -1,4 +1,5 @@
-import type { AuthDiscovery, HttpServerConfig } from "./types";
+import type { HttpServerConfig } from "./types";
+import { resolveBearerHeader, resolveBearerHeaderForProbe } from "./bearer";
 import { refreshOAuthToken, shouldRefreshOAuthToken } from "./oauth";
 import { getOAuthTokenForUpdate, putOAuthTokenInCache } from "./token-cache";
 
@@ -8,16 +9,10 @@ export type ResolvedHeaders = {
 };
 
 export function resolveProbeHeaders(server: HttpServerConfig): Record<string, string> {
-  const headers: Record<string, string> = {
-    Accept: "application/json, text/event-stream",
-    ...(server.headers ?? {}),
-  };
+  const headers = baseHeaders(server);
 
   if (server.auth.kind === "bearer") {
-    const value = process.env[server.auth.env];
-    if (value) {
-      headers.Authorization = value.startsWith("Bearer ") ? value : `Bearer ${value}`;
-    }
+    headers.Authorization = resolveBearerHeaderForProbe(server.auth);
   }
 
   return headers;
@@ -28,8 +23,12 @@ export async function resolveHeaders(server: HttpServerConfig): Promise<Record<s
 }
 
 export async function resolveHeadersWithState(server: HttpServerConfig): Promise<ResolvedHeaders> {
-  const headers = resolveProbeHeaders(server);
+  const headers = baseHeaders(server);
   let authRefreshed = false;
+
+  if (server.auth.kind === "bearer") {
+    headers.Authorization = await resolveBearerHeader(server.url, server.auth);
+  }
 
   if (server.auth.kind === "oauth-token") {
     const result = await resolveOAuthToken(server);
@@ -41,6 +40,13 @@ export async function resolveHeadersWithState(server: HttpServerConfig): Promise
   }
 
   return { headers, authRefreshed };
+}
+
+function baseHeaders(server: HttpServerConfig): Record<string, string> {
+  return {
+    Accept: "application/json, text/event-stream",
+    ...(server.headers ?? {}),
+  };
 }
 
 async function resolveOAuthToken(server: HttpServerConfig) {
@@ -71,9 +77,4 @@ export function normalizeAuthScheme(tokenType: string): string {
   return normalized === "bearer" || normalized === "bot" || normalized === "user"
     ? "Bearer"
     : tokenType;
-}
-
-export function authFromBearerEnv(env: string | undefined): AuthDiscovery | undefined {
-  if (!env) return undefined;
-  return { kind: "bearer", source: "env", env, confidence: "configured" };
 }

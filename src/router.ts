@@ -33,7 +33,7 @@ type AddServerInput = {
   name: string;
   transport?: "http" | "stdio";
   url?: string;
-  bearerEnv?: string;
+  bearer?: string | string[];
   command?: string;
   arg?: string | string[];
   args?: string | string[];
@@ -51,7 +51,7 @@ const addInput = s(
     name: v.pipe(v.string(), v.description("Global server name")),
     transport: v.optional(v.picklist(["http", "stdio"])),
     url: v.optional(v.pipe(v.string(), v.url(), v.description("MCP Streamable HTTP endpoint URL"))),
-    bearerEnv: v.optional(v.string()),
+    bearer: v.optional(v.union([v.string(), v.array(v.string())])),
     command: v.optional(v.pipe(v.string(), v.description("Stdio MCP server command"))),
     arg: v.optional(v.union([v.string(), v.array(v.string())])),
     args: v.optional(v.union([v.string(), v.array(v.string())])),
@@ -126,7 +126,7 @@ function buildRouter(service: ProjectService): Router {
       .meta({
         description: "Add a global MCP server and discover its auth and tool schema.",
         examples: [
-          "mcpx @add --name posthog --url https://mcp.posthog.com/mcp --bearer-env POSTHOG_AUTH_HEADER",
+          "mcpx @add --name posthog --url https://mcp.posthog.com/mcp --bearer env:POSTHOG_AUTH_HEADER",
           "mcpx @add --name open-design --transport stdio --command node --arg /path/to/open-design/apps/daemon/dist/cli.js --arg mcp",
         ],
       })
@@ -377,12 +377,12 @@ function addDiscoverOptions(name: string, input: AddServerInput) {
     throw new Error('HTTP MCP servers require "--url".');
   }
 
-  const options: { name: string; transport: "http"; url: string; bearerEnv?: string } = {
+  const options: { name: string; transport: "http"; url: string; bearer?: string | string[] } = {
     name,
     transport: "http",
     url: input.url,
   };
-  if (input.bearerEnv) options.bearerEnv = input.bearerEnv;
+  if (input.bearer) options.bearer = input.bearer;
   return options;
 }
 

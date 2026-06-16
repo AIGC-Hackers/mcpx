@@ -1,6 +1,7 @@
 import { discoverAuth } from "./auth-discovery";
 import { authenticateOAuthServer } from "./oauth";
-import { authFromBearerEnv, resolveProbeHeaders } from "./headers";
+import { authFromBearerValues, describeBearerAuth } from "./bearer";
+import { resolveProbeHeaders } from "./headers";
 import { assignCommandNames } from "./names";
 import { listMcpTools } from "./mcp-client";
 import type {
@@ -17,7 +18,7 @@ export type DiscoverServerOptions = {
   | {
       transport?: "http";
       url: string;
-      bearerEnv?: string;
+      bearer?: string | string[];
       headers?: Record<string, string>;
       interactiveAuth?: boolean;
     }
@@ -33,7 +34,7 @@ export async function discoverServer(options: DiscoverServerOptions): Promise<Di
   if (options.transport === "stdio") return discoverStdioServer(options);
 
   const url = new URL(options.url);
-  const configuredAuth = authFromBearerEnv(options.bearerEnv);
+  const configuredAuth = authFromBearerValues(options.bearer);
   const seedServer: ServerConfig = {
     transport: "http",
     url: url.toString(),
@@ -163,7 +164,7 @@ export function describeAuth(auth: AuthDiscovery): string {
     case "none":
       return "none";
     case "bearer":
-      return `bearer env:${auth.env}`;
+      return describeBearerAuth(auth);
     case "oauth":
       return `oauth ${auth.confidence}`;
     case "oauth-token":

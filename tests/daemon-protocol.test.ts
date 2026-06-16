@@ -8,7 +8,12 @@ describe("daemon protocol", () => {
     const server: HttpServerConfig = {
       url: "https://mcp.example.com/mcp",
       headers: { Authorization: "Bearer old" },
-      auth: { kind: "bearer", source: "env", env: "MCP_TOKEN", confidence: "configured" },
+      auth: {
+        kind: "bearer",
+        credentials: [{ kind: "env", name: "MCP_TOKEN" }],
+        strategy: "round-robin",
+        confidence: "configured",
+      },
     };
     const rotated: HttpServerConfig = {
       ...server,
@@ -21,11 +26,50 @@ describe("daemon protocol", () => {
   it("isolates HTTP server keys by auth reference", () => {
     const first: HttpServerConfig = {
       url: "https://mcp.example.com/mcp",
-      auth: { kind: "bearer", source: "env", env: "FIRST_TOKEN", confidence: "configured" },
+      auth: {
+        kind: "bearer",
+        credentials: [{ kind: "env", name: "FIRST_TOKEN" }],
+        strategy: "round-robin",
+        confidence: "configured",
+      },
     };
     const second: HttpServerConfig = {
       ...first,
-      auth: { kind: "bearer", source: "env", env: "SECOND_TOKEN", confidence: "configured" },
+      auth: {
+        kind: "bearer",
+        credentials: [{ kind: "env", name: "SECOND_TOKEN" }],
+        strategy: "round-robin",
+        confidence: "configured",
+      },
+    };
+
+    expect(buildServerKey(second)).not.toBe(buildServerKey(first));
+  });
+
+  it("isolates HTTP server keys by bearer credential list", () => {
+    const first: HttpServerConfig = {
+      url: "https://mcp.example.com/mcp",
+      auth: {
+        kind: "bearer",
+        credentials: [
+          { kind: "env", name: "FIRST_TOKEN" },
+          { kind: "env", name: "SECOND_TOKEN" },
+        ],
+        strategy: "round-robin",
+        confidence: "configured",
+      },
+    };
+    const second: HttpServerConfig = {
+      ...first,
+      auth: {
+        kind: "bearer",
+        credentials: [
+          { kind: "env", name: "FIRST_TOKEN" },
+          { kind: "env", name: "THIRD_TOKEN" },
+        ],
+        strategy: "round-robin",
+        confidence: "configured",
+      },
     };
 
     expect(buildServerKey(second)).not.toBe(buildServerKey(first));

@@ -139,6 +139,7 @@ names:
 
 ```bash
 mcpx @add --name <server> --url <mcp-url>
+mcpx @add --name <server> --url <mcp-url> --bearer env:<TOKEN_ENV>
 mcpx @add --name <server> --transport stdio --command <command> --arg <arg>
 mcpx @remove --name <server>
 mcpx @refresh
@@ -150,9 +151,20 @@ mcpx @skill
 
 Server names cannot start with `@`.
 
-HTTP is the default transport. Stdio servers are local process registrations;
-pass each process argument with `--arg`, or use `--input` when you need structured
-`args` / `env`:
+HTTP is the default transport. Pass bearer credentials with repeatable
+`--bearer` values. `env:NAME` reads a token from an environment variable at
+runtime; literal values are accepted but are stored in the registry:
+
+```bash
+mcpx @add --name posthog --url https://mcp.posthog.com/mcp --bearer env:POSTHOG_TOKEN
+mcpx @add --name posthog --url https://mcp.posthog.com/mcp \
+  --bearer env:POSTHOG_TOKEN_A \
+  --bearer env:POSTHOG_TOKEN_B
+```
+
+Multiple bearer credentials use round-robin selection by default. Stdio servers
+are local process registrations; pass each process argument with `--arg`, or use
+`--input` when you need structured `args` / `env`:
 
 ```bash
 mcpx @add --input '{
@@ -175,6 +187,12 @@ servers warm, and can be inspected or stopped with `mcpx @daemon status` and
 `mcpx @daemon server` subcommand. HTTP servers continue to use the direct client path.
 
 ## Authentication
+
+Bearer auth is configured explicitly with `--bearer`. Prefer `env:NAME`
+references so secrets stay out of the registry. `${NAME}` is also accepted when
+passed through the shell literally, for example `--bearer '${POSTHOG_TOKEN}'`.
+When several bearer credentials are registered, mcpx advances a local
+round-robin cursor before each HTTP request.
 
 When `@add` detects OAuth, mcpx tries to complete authentication immediately.
 For OAuth servers that support dynamic client registration, mcpx registers a
