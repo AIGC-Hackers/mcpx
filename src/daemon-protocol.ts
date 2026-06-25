@@ -8,6 +8,9 @@ import { MCPX_VERSION } from './version'
 export const DAEMON_PROTOCOL_VERSION = 2
 export const DAEMON_ENV = 'MCPX_DAEMON_SERVER'
 export const DISABLE_DAEMON_ENV = 'MCPX_DISABLE_DAEMON'
+export const NOTIFICATION_MODE_ENV = 'MCPX_NOTIFICATION_MODE'
+
+export type NotificationMode = 'buffer' | 'discard'
 
 export type McpNotification =
 	| {
@@ -63,7 +66,7 @@ export type ClientMessage =
 			headers?: Record<string, string>
 			toolName: string
 			input: Record<string, unknown>
-			notificationMode?: 'buffer' | 'discard'
+			notificationMode?: NotificationMode
 	  }
 	| { op: 'status' }
 	| { op: 'stop' }
@@ -86,6 +89,15 @@ export type DaemonMessage =
 export function shouldUseDaemon(): boolean {
 	return (
 		process.env[DAEMON_ENV] !== '1' && process.env[DISABLE_DAEMON_ENV] !== '1'
+	)
+}
+
+export function notificationModeFromEnv(): NotificationMode {
+	const raw = process.env[NOTIFICATION_MODE_ENV]
+	if (!raw || raw === 'buffer') return 'buffer'
+	if (raw === 'discard') return 'discard'
+	throw new Error(
+		`Invalid ${NOTIFICATION_MODE_ENV} value "${raw}". Expected "buffer" or "discard".`,
 	)
 }
 

@@ -112,6 +112,16 @@ describe('notification fixture dogfood', () => {
 			},
 		])
 
+		const discardedRaw = JSON.parse(
+			(
+				await runMcpx(
+					['notification-fixture', 'progress-stream', '--count', '4', '--raw'],
+					{ MCPX_NOTIFICATION_MODE: 'discard' },
+				)
+			).stdout,
+		)
+		expect(discardedRaw).toEqual({ tool: 'progress-stream', count: 4 })
+
 		const toolsChanged = JSON.parse(
 			(await runMcpx(['notification-fixture', 'notify-tools-changed', '--raw']))
 				.stdout,
@@ -180,12 +190,14 @@ describe('notification fixture dogfood', () => {
 
 async function runMcpx(
 	args: string[],
+	env: Record<string, string> = {},
 ): Promise<{ stdout: string; stderr: string }> {
 	const proc = Bun.spawn([process.execPath, mainPath, ...args], {
 		env: {
 			...process.env,
 			HOME: home,
 			MCPX_HOME: home,
+			...env,
 		},
 		stdin: 'ignore',
 		stdout: 'pipe',

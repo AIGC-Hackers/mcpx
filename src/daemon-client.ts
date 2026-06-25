@@ -8,6 +8,7 @@ import {
 	DAEMON_PROTOCOL_VERSION,
 	buildServerKey,
 	helloMessage,
+	notificationModeFromEnv,
 	type ClientMessage,
 	type DaemonMessage,
 	type DaemonStatus,
@@ -68,6 +69,7 @@ export async function callToolViaDaemon(
 		server,
 		toolName,
 		input,
+		notificationMode: notificationModeFromEnv(),
 	}
 	if (context.headers) message.headers = context.headers
 	const response = await requestDaemonMessage(

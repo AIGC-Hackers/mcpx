@@ -215,6 +215,10 @@ tool and then continues the original command.
 Tool calls use a 5 minute request timeout by default. Set
 `MCPX_TOOL_CALL_TIMEOUT_MS` when a remote MCP server legitimately needs longer.
 
+mcpx buffers MCP subscription notifications and returns them with the next daemon
+tool-call result by default. Set `MCPX_NOTIFICATION_MODE=discard` to ignore those
+notifications for a command; accepted values are `buffer` and `discard`.
+
 ## Output
 
 mcpx optimizes output for humans and agents by default:

@@ -197,13 +197,13 @@ async function callTool(
 		message.headers,
 		async (session) => {
 			const buffer = createNotificationBuffer()
-			session.currentBuffer =
-				message.notificationMode === 'discard' ? undefined : buffer
+			const bufferNotifications = message.notificationMode !== 'discard'
+			session.currentBuffer = bufferNotifications ? buffer : undefined
 			try {
 				const result = await callToolWithRetainedSessionFallback(
 					session,
 					message,
-					buffer,
+					bufferNotifications ? buffer : undefined,
 				)
 				const notifications = await flushNotifications(buffer)
 				const toolsChanged =
@@ -228,7 +228,7 @@ async function callTool(
 async function callToolWithRetainedSessionFallback(
 	session: ManagedSession,
 	message: Extract<ClientMessage, { op: 'call' }>,
-	buffer: NotificationBuffer,
+	buffer: NotificationBuffer | undefined,
 ): Promise<unknown> {
 	try {
 		return await callToolOnConnectedSession(session, message, buffer)
@@ -249,24 +249,25 @@ async function callToolWithRetainedSessionFallback(
 async function callToolOnConnectedSession(
 	session: ManagedSession,
 	message: Extract<ClientMessage, { op: 'call' }>,
-	buffer: NotificationBuffer,
+	buffer: NotificationBuffer | undefined,
 ): Promise<unknown> {
 	const connection = await ensureConnected(session)
+	const options = toolCallRequestOptions()
+	if (buffer) {
+		options.onprogress = (progress) => {
+			buffer.add({
+				method: 'notifications/progress',
+				params: { progressToken: message.callId, ...progress },
+			})
+		}
+	}
 	return connection.client.callTool(
 		{
 			name: message.toolName,
 			arguments: message.input,
 		},
 		undefined,
-		{
-			onprogress: (progress) => {
-				buffer.add({
-					method: 'notifications/progress',
-					params: { progressToken: message.callId, ...progress },
-				})
-			},
-			...toolCallRequestOptions(),
-		},
+		options,
 	)
 }
 
