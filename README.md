@@ -26,7 +26,7 @@ control commands live under the `@` namespace.
 Install the latest release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AIGC-Hackers/mcpx/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/celados/mcpx/main/install.sh | bash
 ```
 
 By default, the installer downloads the executable JS bundle from GitHub Releases

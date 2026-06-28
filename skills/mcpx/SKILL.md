@@ -197,5 +197,5 @@ If mcpx behaves unexpectedly, capture the exact command, schema selector, input,
 and structured error, then file an issue:
 
 ```bash
-gh issue create -R AIGC-Hackers/mcpx --title "bug: <summary>" --body "<repro steps and error output>"
+gh issue create -R celados/mcpx --title "bug: <summary>" --body "<repro steps and error output>"
 ```

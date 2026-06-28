@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="${MCPX_REPO:-AIGC-Hackers/mcpx}"
+REPO="${MCPX_REPO:-celados/mcpx}"
 VERSION="${MCPX_VERSION:-latest}"
 BIN_DIR="${MCPX_INSTALL_DIR:-$HOME/.local/bin}"
 
@@ -14,7 +14,7 @@ Download and install the mcpx executable JS bundle from GitHub Releases.
 Options:
   --dir DIR          Install directory. Default: $MCPX_INSTALL_DIR or ~/.local/bin.
   --version VERSION  Release version or tag. Default: $MCPX_VERSION or latest.
-  --repo OWNER/REPO  GitHub repository. Default: $MCPX_REPO or AIGC-Hackers/mcpx.
+  --repo OWNER/REPO  GitHub repository. Default: $MCPX_REPO or celados/mcpx.
   -h, --help         Show this help.
 USAGE
 }

@@ -66,7 +66,7 @@ when a tool call fails with no useful CLI output.
   `mcpx @refresh` does not converge.
 
 In all other cases prefer filing an issue with the command, input, and any
-relevant log excerpt at https://github.com/AIGC-Hackers/mcpx/issues.
+relevant log excerpt at https://github.com/celados/mcpx/issues.
 
 ## What this reference deliberately does not cover
 
