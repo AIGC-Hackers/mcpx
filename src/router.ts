@@ -1,3 +1,4 @@
+import { cancel, isCancel, multiselect } from '@clack/prompts'
 import { toStandardJsonSchema } from '@valibot/to-json-schema'
 import { c, cli, createDefaultSchemaExplorer, group, type Router } from 'argc'
 import * as v from 'valibot'
@@ -14,6 +15,7 @@ import { callMcpTool } from './mcp-client'
 import { assertServerName } from './names'
 import { printOutput, type McpxContext } from './output'
 import { loadProjectService, type ProjectService } from './project-service'
+import { createRefreshProgressReporter } from './refresh-progress'
 import {
 	isReauthRequiredMessage,
 	refreshAllServers,
@@ -68,7 +70,14 @@ const addInput = s(
 
 const removeInput = s(
 	v.object({
-		name: v.pipe(v.string(), v.description('Global server name')),
+		name: v.optional(
+			v.pipe(
+				v.string(),
+				v.description(
+					'Global server name(s). Comma-separated for multiple. Omit to pick interactively.',
+				),
+			),
+		),
 	}),
 )
 
@@ -156,7 +165,11 @@ function buildRouter(service: ProjectService): Router {
 		'@remove': c
 			.meta({
 				description: 'Remove a global MCP server and its cached credentials.',
-				examples: ['mcpx @remove --name posthog'],
+				examples: [
+					'mcpx @remove --name posthog',
+					'mcpx @remove --name posthog,sentry',
+					'mcpx @remove',
+				],
 			})
 			.input(removeInput),
 		'@refresh': c.meta({
@@ -306,30 +319,56 @@ function buildHandlers(
 		)
 	}
 
-	handlers['@remove'] = async (options: HandlerOptions<{ name: string }>) => {
-		const name = assertServerName(options.input.name)
-		const removed = await removeServerConfig(name)
-		if (!removed) {
-			throw new Error(`Unknown MCP server "${name}".`)
+	handlers['@remove'] = async (options: HandlerOptions<{ name?: string }>) => {
+		const rawName = options.input.name
+		const names =
+			rawName === undefined
+				? await promptForServersToRemove(service)
+				: parseRemoveNames(rawName)
+
+		const removals: Array<{
+			name: string
+			removed: boolean
+			tokenRemoved: boolean
+		}> = []
+		for (const name of names) {
+			const removed = await removeServerConfig(name)
+			if (!removed) {
+				throw new Error(`Unknown MCP server "${name}".`)
+			}
+			const tokenRemoved =
+				removed.transport !== 'stdio' && removed.auth.kind === 'oauth-token'
+					? await removeOAuthToken(removed.auth.tokenKey)
+					: false
+			removals.push({ name, removed: true, tokenRemoved })
 		}
-		const tokenRemoved =
-			removed.transport !== 'stdio' && removed.auth.kind === 'oauth-token'
-				? await removeOAuthToken(removed.auth.tokenKey)
-				: false
-		await printOutput(
-			{
-				name,
-				removed: true,
-				tokenRemoved,
-			},
-			options.context,
-		)
+
+		// Preserve the single-server output shape so existing agent consumers keep
+		// working when only one name is supplied.
+		if (removals.length === 1) {
+			await printOutput(removals[0]!, options.context)
+			return
+		}
+		await printOutput({ removed: removals }, options.context)
 	}
 
 	handlers['@refresh'] = async (
 		options: HandlerOptions<Record<string, never>>,
 	) => {
-		await printOutput(await refreshAllServers(), options.context)
+		const reporter = createRefreshProgressReporter()
+		const cleanup = () => reporter.dispose()
+		process.once('SIGINT', cleanup)
+		process.once('SIGTERM', cleanup)
+		try {
+			const summary = await refreshAllServers({
+				onProgress: reporter.handle,
+			})
+			await printOutput(summary, options.context)
+		} finally {
+			reporter.dispose()
+			process.off('SIGINT', cleanup)
+			process.off('SIGTERM', cleanup)
+		}
 	}
 
 	handlers['@daemon'] = {
@@ -472,4 +511,62 @@ export const __test = {
 	describeTool,
 	normalizeArgv,
 	addDiscoverOptions,
+}
+
+async function promptForServersToRemove(
+	service: ProjectService,
+): Promise<string[]> {
+	const names = Object.keys(service.config.servers).sort()
+	if (names.length === 0) {
+		throw new Error('No MCP servers are registered. Nothing to remove.')
+	}
+
+	if (!process.stdin.isTTY) {
+		throw new Error(
+			'mcpx @remove requires --name when not running in an interactive terminal.',
+		)
+	}
+
+	const result = await multiselect({
+		message:
+			'Select MCP server(s) to remove (space to toggle, enter to confirm)',
+		options: names.map((name) => {
+			const server = service.config.servers[name]!
+			const toolCount = server.tools?.length ?? 0
+			const transport =
+				server.transport === 'stdio' ? 'stdio' : `http (${server.auth.kind})`
+			return {
+				value: name,
+				label: name,
+				hint: `${transport} · ${toolCount} tool${toolCount === 1 ? '' : 's'}`,
+			}
+		}),
+		required: true,
+	})
+
+	if (isCancel(result)) {
+		cancel('Removal cancelled.')
+		process.exit(1)
+	}
+
+	return result.map((name) => assertServerName(name))
+}
+
+function parseRemoveNames(value: string): string[] {
+	const names = value
+		.split(',')
+		.map((entry) => entry.trim())
+		.filter(Boolean)
+	if (names.length === 0) {
+		throw new Error('Provide at least one server name to remove.')
+	}
+	const seen = new Set<string>()
+	const result: string[] = []
+	for (const name of names) {
+		const normalized = assertServerName(name)
+		if (seen.has(normalized)) continue
+		seen.add(normalized)
+		result.push(normalized)
+	}
+	return result
 }

@@ -104,17 +104,130 @@ export async function runSchemaRefreshWorker(): Promise<void> {
 	})
 }
 
-export async function refreshAllServers(): Promise<RefreshSummary> {
-	const config = await readRegistryConfig()
-	const results: ServerRefreshResult[] = []
+const DEFAULT_REFRESH_CONCURRENCY = 8
 
-	for (const name of Object.keys(config.servers)) {
-		results.push(
-			await refreshOneServer(name, { staleOnly: false, interactiveAuth: true }),
-		)
+export type RefreshProgressEvent =
+	| { type: 'start'; total: number; names: string[] }
+	| { type: 'server-start'; name: string; active: string[] }
+	| {
+			type: 'server-done'
+			name: string
+			result: ServerRefreshResult
+			completed: number
+			total: number
+			active: string[]
+	  }
+	| { type: 'reauth-start'; name: string; remaining: number; total: number }
+	| { type: 'reauth-done'; name: string; result: ServerRefreshResult }
+	| { type: 'complete'; summary: RefreshSummary }
+
+export type RefreshAllOptions = {
+	concurrency?: number
+	interactiveAuth?: boolean
+	onProgress?: (event: RefreshProgressEvent) => void
+}
+
+export async function refreshAllServers(
+	options: RefreshAllOptions = {},
+): Promise<RefreshSummary> {
+	const config = await readRegistryConfig()
+	const names = Object.keys(config.servers)
+	const concurrency = Math.max(
+		1,
+		options.concurrency ?? DEFAULT_REFRESH_CONCURRENCY,
+	)
+	const interactiveAuth = options.interactiveAuth ?? true
+	const onProgress = options.onProgress
+
+	onProgress?.({ type: 'start', total: names.length, names })
+
+	// Phase 1: refresh schemas concurrently without interactive auth so that
+	// browser-based OAuth flows do not race. Reauth-required servers are
+	// handled serially afterwards.
+	const results = new Map<string, ServerRefreshResult>()
+	const active = new Set<string>()
+	const queue = [...names]
+
+	async function runOne(name: string): Promise<void> {
+		active.add(name)
+		onProgress?.({ type: 'server-start', name, active: [...active] })
+		try {
+			const result = await refreshOneServer(name, {
+				staleOnly: false,
+				interactiveAuth: false,
+			})
+			results.set(name, result)
+		} catch (error) {
+			results.set(name, {
+				server: name,
+				status: 'unreachable',
+				toolsBefore: 0,
+				message: errorMessage(error),
+			})
+		} finally {
+			active.delete(name)
+			onProgress?.({
+				type: 'server-done',
+				name,
+				result: results.get(name)!,
+				completed: results.size,
+				total: names.length,
+				active: [...active],
+			})
+		}
 	}
 
-	return buildRefreshSummary(results)
+	const workers: Promise<void>[] = []
+	const worker = async () => {
+		while (queue.length > 0) {
+			const name = queue.shift()
+			if (!name) return
+			await runOne(name)
+		}
+	}
+	for (let i = 0; i < Math.min(concurrency, names.length); i++) {
+		workers.push(worker())
+	}
+	await Promise.all(workers)
+
+	// Phase 2: handle servers that require an interactive reauth one at a time.
+	if (interactiveAuth) {
+		const reauthQueue = names.filter(
+			(name) => results.get(name)?.status === 'reauth-required',
+		)
+		for (let i = 0; i < reauthQueue.length; i++) {
+			const name = reauthQueue[i]!
+			onProgress?.({
+				type: 'reauth-start',
+				name,
+				remaining: reauthQueue.length - i,
+				total: reauthQueue.length,
+			})
+			let result: ServerRefreshResult
+			try {
+				result = await refreshOneServer(name, {
+					staleOnly: false,
+					interactiveAuth: true,
+				})
+			} catch (error) {
+				result = {
+					server: name,
+					status: 'unreachable',
+					toolsBefore: results.get(name)?.toolsBefore ?? 0,
+					message: errorMessage(error),
+				}
+			}
+			results.set(name, result)
+			onProgress?.({ type: 'reauth-done', name, result })
+		}
+	}
+
+	const ordered = names
+		.map((name) => results.get(name))
+		.filter((result): result is ServerRefreshResult => Boolean(result))
+	const summary = buildRefreshSummary(ordered)
+	onProgress?.({ type: 'complete', summary })
+	return summary
 }
 
 async function refreshOneServer(
