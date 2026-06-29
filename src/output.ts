@@ -44,20 +44,7 @@ export async function printOutput(
 		const write = isError ? console.error : console.log
 		if (isError) process.exitCode = 1
 
-		if (
-			value.structuredContent !== undefined &&
-			value.structuredContent !== null
-		) {
-			write(formatStructuredContent(value, context.output))
-			return
-		}
-
-		for (const line of await formatMcpContent(
-			value.content ?? [],
-			context.output,
-		)) {
-			write(line)
-		}
+		await printMcpToolResult(value, context, write)
 		return
 	}
 
@@ -67,6 +54,30 @@ export async function printOutput(
 	}
 
 	console.log(formatYaml(value))
+}
+
+async function printMcpToolResult(
+	value: McpToolResult,
+	context: McpxContext,
+	write: (message?: unknown, ...optionalParams: unknown[]) => void,
+): Promise<void> {
+	const content = value.content ?? []
+	if (content.length > 0) {
+		for (const line of await formatMcpContent(content, context.output)) {
+			write(line)
+		}
+
+		const structured = formatSupplementalStructuredContent(
+			value,
+			context.output,
+		)
+		if (structured) write(structured)
+		return
+	}
+
+	if (hasStructuredContent(value)) {
+		write(formatStructuredContent(value, context.output))
+	}
 }
 
 async function printDaemonOutput(
@@ -121,14 +132,17 @@ function resultAsMergeableObject(
 	result: unknown,
 ): Record<string, unknown> | undefined {
 	if (!isMcpToolResult(result)) return isRecord(result) ? result : undefined
-	if (isRecord(result.structuredContent)) return result.structuredContent
 
 	const content = result.content ?? []
-	if (content.length !== 1) return undefined
-	const [item] = content
-	if (item?.type !== 'text' || typeof item.text !== 'string') return undefined
-	const parsed = parseJsonText(item.text)
-	return isRecord(parsed) ? parsed : undefined
+	if (content.length > 0) {
+		const contentObject = contentAsMergeableObject(content)
+		if (!contentObject) return undefined
+		return addSupplementalStructuredContent(contentObject, result)
+	}
+
+	return isRecord(result.structuredContent)
+		? result.structuredContent
+		: undefined
 }
 
 function mergeNotifications(
@@ -155,12 +169,15 @@ function notificationOutputValue(notifications: McpNotification[]): unknown {
 
 function isStructuredDaemonResult(value: unknown): boolean {
 	if (!isMcpToolResult(value)) return true
-	if (value.structuredContent !== undefined && value.structuredContent !== null)
-		return true
 	const content = value.content ?? []
-	return !content.some(
-		(item) => item.type === 'text' && typeof item.text === 'string',
-	)
+	if (
+		content.some(
+			(item) => item.type === 'text' && typeof item.text === 'string',
+		)
+	) {
+		return false
+	}
+	return hasStructuredContent(value)
 }
 
 export async function formatMcpContent(
@@ -201,6 +218,18 @@ function formatStructuredContent(
 	return output === 'raw' ? JSON.stringify(value, null, 2) : formatYaml(value)
 }
 
+function formatSupplementalStructuredContent(
+	result: McpToolResult,
+	output: McpxContext['output'],
+): string | undefined {
+	if (!hasStructuredContent(result)) return undefined
+	if (contentAlreadyRepresentsStructuredContent(result)) return undefined
+
+	return output === 'raw'
+		? `$structured: ${JSON.stringify(result.structuredContent)}`
+		: formatYaml({ $structured: result.structuredContent })
+}
+
 function formatTextContent(
 	text: string,
 	output: McpxContext['output'],
@@ -213,6 +242,50 @@ function formatTextContent(
 	}
 
 	return text
+}
+
+function contentAsMergeableObject(
+	content: McpContent[],
+): Record<string, unknown> | undefined {
+	if (content.length !== 1) return undefined
+	const [item] = content
+	if (item?.type !== 'text' || typeof item.text !== 'string') return undefined
+	const parsed = parseJsonText(item.text)
+	return isRecord(parsed) ? parsed : undefined
+}
+
+function addSupplementalStructuredContent(
+	resultObject: Record<string, unknown>,
+	result: McpToolResult,
+): Record<string, unknown> {
+	if (
+		!hasStructuredContent(result) ||
+		contentAlreadyRepresentsStructuredContent(result)
+	) {
+		return resultObject
+	}
+	return {
+		...resultObject,
+		$structured: result.structuredContent,
+	}
+}
+
+function contentAlreadyRepresentsStructuredContent(
+	result: McpToolResult,
+): boolean {
+	if (!hasStructuredContent(result)) return false
+	const content = result.content ?? []
+	if (content.length !== 1) return false
+	const [item] = content
+	if (item?.type !== 'text' || typeof item.text !== 'string') return false
+	const parsed = parseJsonText(item.text)
+	return deepEqual(parsed, result.structuredContent)
+}
+
+function hasStructuredContent(result: McpToolResult): boolean {
+	return (
+		result.structuredContent !== undefined && result.structuredContent !== null
+	)
 }
 
 function parseJsonText(text: string): unknown | undefined {
@@ -326,6 +399,23 @@ function isMcpContent(value: unknown): value is McpContent {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function deepEqual(left: unknown, right: unknown): boolean {
+	return (
+		JSON.stringify(sortComparable(left)) ===
+		JSON.stringify(sortComparable(right))
+	)
+}
+
+function sortComparable(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(sortComparable)
+	if (!isRecord(value)) return value
+	return Object.fromEntries(
+		Object.entries(value)
+			.sort(([left], [right]) => left.localeCompare(right))
+			.map(([key, item]) => [key, sortComparable(item)]),
+	)
 }
 
 function omitUndefined(

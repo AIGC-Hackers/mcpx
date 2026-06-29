@@ -226,6 +226,8 @@ mcpx optimizes output for humans and agents by default:
 - text MCP content is printed directly
 - JSON text content is rendered as YAML
 - non-text content is saved to a temporary file and printed as `file saved <path>`
+- supplemental MCP `structuredContent` is printed as `$structured` only when it
+  is not already represented by the primary content
 
 Use `--raw` to preserve raw server text output:
 

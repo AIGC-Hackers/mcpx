@@ -60,7 +60,7 @@ describe('output format', () => {
 		}
 	})
 
-	it('prints structured MCP content before fallback text', async () => {
+	it('prints text MCP content before supplemental structured content', async () => {
 		const log = captureConsoleLog()
 		try {
 			await printOutput(
@@ -71,6 +71,35 @@ describe('output format', () => {
 				{ output: 'yaml' },
 			)
 
+			expect(log.calls[0]?.[0]).toBe('human')
+			expect(parseYaml(String(log.calls[1]?.[0]))).toEqual({
+				$structured: {
+					pages: [{ pageId: 1 }],
+					count: 1,
+				},
+			})
+		} finally {
+			log.restore()
+		}
+	})
+
+	it('does not repeat structured MCP content already represented by JSON text', async () => {
+		const log = captureConsoleLog()
+		try {
+			await printOutput(
+				{
+					content: [
+						{
+							type: 'text',
+							text: '{"pages":[{"pageId":1}],"count":1}',
+						},
+					],
+					structuredContent: { pages: [{ pageId: 1 }], count: 1 },
+				},
+				{ output: 'yaml' },
+			)
+
+			expect(log.calls).toHaveLength(1)
 			expect(parseYaml(String(log.calls[0]?.[0]))).toEqual({
 				pages: [{ pageId: 1 }],
 				count: 1,
@@ -94,6 +123,26 @@ describe('output format', () => {
 			expect(log.calls[0]?.[0]).toBe(
 				'{\n  "structuredContent": {\n    "count": 1\n  },\n  "_meta": {\n    "traceId": "abc"\n  }\n}',
 			)
+		} finally {
+			log.restore()
+		}
+	})
+
+	it('keeps raw text primary and appends raw structured content when both exist', async () => {
+		const log = captureConsoleLog()
+		try {
+			await printOutput(
+				{
+					content: [{ type: 'text', text: '{"name":"Ada"}' }],
+					structuredContent: { count: 1 },
+				},
+				{ output: 'raw' },
+			)
+
+			expect(log.calls.map((call) => call[0])).toEqual([
+				'{"name":"Ada"}',
+				'$structured: {"count":1}',
+			])
 		} finally {
 			log.restore()
 		}

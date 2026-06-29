@@ -43,56 +43,22 @@ describe('notification fixture dogfood', () => {
 			tools: 5,
 		})
 
-		const progress = parseYaml(
+		const progress = parseMcpxOutput(
 			(
 				await runMcpx([
 					'notification-fixture',
 					'progress-stream',
 					'--count',
 					'4',
-				])
-			).stdout,
-		) as Record<string, unknown>
-		expect(progress).toMatchObject({
-			tool: 'progress-stream',
-			count: 4,
-			$notifications: [
-				{
-					method: 'notifications/progress',
-					params: expect.objectContaining({
-						progress: 1,
-						total: 4,
-						message: 'step 1',
-					}),
-				},
-				{
-					method: 'notifications/progress',
-					params: expect.objectContaining({
-						progress: 4,
-						total: 4,
-						message: 'step 4',
-					}),
-					aggregatedCount: 2,
-				},
-			],
-		})
-
-		const progressRaw = JSON.parse(
-			(
-				await runMcpx([
-					'notification-fixture',
-					'progress-stream',
-					'--count',
-					'4',
-					'--raw',
 				])
 			).stdout,
 		)
-		expect(progressRaw.result.structuredContent).toEqual({
+		expect(progress.text).toBe('progress-stream-ok')
+		expect(progress.structured).toEqual({
 			tool: 'progress-stream',
 			count: 4,
 		})
-		expect(progressRaw.notifications).toEqual([
+		expect(progress.notification).toEqual([
 			{
 				method: 'notifications/progress',
 				params: expect.objectContaining({
@@ -112,7 +78,43 @@ describe('notification fixture dogfood', () => {
 			},
 		])
 
-		const discardedRaw = JSON.parse(
+		const progressRaw = parseMcpxOutput(
+			(
+				await runMcpx([
+					'notification-fixture',
+					'progress-stream',
+					'--count',
+					'4',
+					'--raw',
+				])
+			).stdout,
+		)
+		expect(progressRaw.text).toBe('progress-stream-ok')
+		expect(progressRaw.structured).toEqual({
+			tool: 'progress-stream',
+			count: 4,
+		})
+		expect(progressRaw.notification).toEqual([
+			{
+				method: 'notifications/progress',
+				params: expect.objectContaining({
+					progress: 1,
+					total: 4,
+					message: 'step 1',
+				}),
+			},
+			{
+				method: 'notifications/progress',
+				params: expect.objectContaining({
+					progress: 4,
+					total: 4,
+					message: 'step 4',
+				}),
+				aggregatedCount: 2,
+			},
+		])
+
+		const discardedRaw = parseMcpxOutput(
 			(
 				await runMcpx(
 					['notification-fixture', 'progress-stream', '--count', '4', '--raw'],
@@ -120,31 +122,37 @@ describe('notification fixture dogfood', () => {
 				)
 			).stdout,
 		)
-		expect(discardedRaw).toEqual({ tool: 'progress-stream', count: 4 })
+		expect(discardedRaw).toEqual({
+			text: 'progress-stream-ok',
+			structured: { tool: 'progress-stream', count: 4 },
+			notification: undefined,
+		})
 
-		const toolsChanged = JSON.parse(
+		const toolsChanged = parseMcpxOutput(
 			(await runMcpx(['notification-fixture', 'notify-tools-changed', '--raw']))
 				.stdout,
 		)
-		expect(toolsChanged.notifications).toContainEqual({
+		expect(toolsChanged.notification).toContainEqual({
 			method: 'notifications/tools/list_changed',
 		})
 
-		const verbatim = JSON.parse(
+		const verbatim = parseMcpxOutput(
 			(await runMcpx(['notification-fixture', 'verbatim-notify', '--raw']))
 				.stdout,
 		)
-		expect(verbatim.notifications).toEqual([
+		expect(verbatim.notification).toEqual([
 			{
 				method: 'notifications/custom/event',
 				params: { source: 'notification-fixture', ok: true },
 			},
 		])
 
-		const flood = parseYaml(
+		const flood = parseMcpxOutput(
 			(await runMcpx(['notification-fixture', 'flood-notify'])).stdout,
-		) as Record<string, unknown>
-		const oversizeMessage = String(flood.$notifications)
+		)
+		expect(flood.text).toBe('flood-notify-ok')
+		expect(flood.structured).toEqual({ tool: 'flood-notify' })
+		const oversizeMessage = String(flood.notification)
 		expect(oversizeMessage).toMatch(
 			/^notifications oversize, saved to .+mcpx-notifications-.+\.json$/,
 		)
@@ -187,6 +195,34 @@ describe('notification fixture dogfood', () => {
 		)
 	})
 })
+
+function parseMcpxOutput(stdout: string): {
+	text: string
+	structured: unknown
+	notification: unknown
+} {
+	const notificationMarker = '\n$notification: '
+	const notificationIndex = stdout.indexOf(notificationMarker)
+	const beforeNotification =
+		notificationIndex === -1 ? stdout : stdout.slice(0, notificationIndex)
+	const notification =
+		notificationIndex === -1
+			? undefined
+			: JSON.parse(stdout.slice(notificationIndex + notificationMarker.length))
+
+	const structuredMarker = '\n$structured:'
+	const structuredIndex = beforeNotification.indexOf(structuredMarker)
+	if (structuredIndex === -1) {
+		return { text: beforeNotification, structured: undefined, notification }
+	}
+
+	const text = beforeNotification.slice(0, structuredIndex)
+	const structured = parseYaml(
+		beforeNotification.slice(structuredIndex + 1),
+	) as { $structured: unknown }
+
+	return { text, structured: structured.$structured, notification }
+}
 
 async function runMcpx(
 	args: string[],
